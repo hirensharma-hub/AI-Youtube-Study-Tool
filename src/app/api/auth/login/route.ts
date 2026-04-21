@@ -12,37 +12,46 @@ const loginSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-
   try {
-    body = await parseJsonBody(request);
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "The request payload was invalid.", 400);
-  }
+    let body: unknown;
 
-  const parsed = loginSchema.safeParse(body);
-  if (!parsed.success) {
-    return apiError("Please provide a valid email and password.");
-  }
-
-  const user = await findUserByEmail(parsed.data.email);
-  if (!user?.passwordHash) {
-    return apiError("Invalid email or password.", 401);
-  }
-
-  const isValid = await verifyPassword(parsed.data.password, String(user.passwordHash));
-  if (!isValid) {
-    return apiError("Invalid email or password.", 401);
-  }
-
-  const sessionToken = await createSession(user._id.toString(), String(user.email));
-  await persistSession(sessionToken);
-
-  return NextResponse.json({
-    user: {
-      id: user._id.toString(),
-      email: String(user.email),
-      name: String(user.name)
+    try {
+      body = await parseJsonBody(request);
+    } catch (error) {
+      return apiError(error instanceof Error ? error.message : "The request payload was invalid.", 400);
     }
-  });
+
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError("Please provide a valid email and password.");
+    }
+
+    const user = await findUserByEmail(parsed.data.email);
+    if (!user?.passwordHash) {
+      return apiError("Invalid email or password.", 401);
+    }
+
+    const isValid = await verifyPassword(parsed.data.password, String(user.passwordHash));
+    if (!isValid) {
+      return apiError("Invalid email or password.", 401);
+    }
+
+    const sessionToken = await createSession(user._id.toString(), String(user.email));
+    await persistSession(sessionToken);
+
+    return NextResponse.json({
+      user: {
+        id: user._id.toString(),
+        email: String(user.email),
+        name: String(user.name)
+      }
+    });
+  } catch (error) {
+    return apiError(
+      error instanceof Error
+        ? error.message
+        : "Unable to sign you in right now. Check the server configuration and try again.",
+      500
+    );
+  }
 }

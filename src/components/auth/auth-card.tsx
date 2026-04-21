@@ -39,8 +39,11 @@ export function AuthCard({ mode }: AuthCardProps) {
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: "Unable to continue right now." }));
-        throw new Error(data.error || "Unable to continue right now.");
+        const fallbackMessage = "Unable to continue right now.";
+        const data = await response
+          .json()
+          .catch(async () => ({ error: (await response.text().catch(() => "")).trim() || fallbackMessage }));
+        throw new Error(data.error || fallbackMessage);
       }
 
       router.push("/learn");
