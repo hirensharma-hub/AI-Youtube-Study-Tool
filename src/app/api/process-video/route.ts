@@ -11,7 +11,7 @@ import { env } from "@/lib/env";
 import { generateLessonQuiz } from "@/lib/quiz";
 import { CURRENT_PROCESSING_VERSION, getProcessedVideoByVideoId, getUserSettings, saveProcessedVideo } from "@/lib/server-data";
 import { collectVerificationReferences, extractVerificationQueries, verifyAndRefineNotes } from "@/lib/web-verify";
-import { fetchVideoTranscript } from "@/lib/youtube";
+import { extractYouTubeVideoId, fetchVideoTranscript } from "@/lib/youtube";
 
 const processSchema = z.object({
   videoUrl: z.string().trim().url()
@@ -398,15 +398,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const transcriptData = await fetchVideoTranscript(parsed.data.videoUrl);
-    const cached = await getProcessedVideoByVideoId(transcriptData.videoId, {
+    const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
+    const cached = await getProcessedVideoByVideoId(videoId, {
       minVersion: CURRENT_PROCESSING_VERSION
     });
     if (cached) {
       return NextResponse.json({ video: cached, cached: true, done: true });
     }
 
-    const inFlight = processingCache.get(transcriptData.videoId);
+    const inFlight = processingCache.get(videoId);
     if (inFlight) {
       const taskId = createTaskId();
       setTaskState(taskId, {
@@ -448,11 +448,11 @@ export async function POST(request: NextRequest) {
     });
 
     const nextPromise = runProcessing(parsed.data.videoUrl, user.id, (state) => updateTaskProgress(taskId, state));
-    processingCache.set(transcriptData.videoId, nextPromise);
+    processingCache.set(videoId, nextPromise);
 
     nextPromise
       .then((video) => {
-        processingCache.delete(transcriptData.videoId);
+        processingCache.delete(videoId);
         setTaskState(taskId, {
           status: "completed",
           stage: "completed",
@@ -462,7 +462,7 @@ export async function POST(request: NextRequest) {
         });
       })
       .catch((error) => {
-        processingCache.delete(transcriptData.videoId);
+        processingCache.delete(videoId);
         setTaskState(taskId, {
           status: "failed",
           stage: "failed",
@@ -475,8 +475,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ taskId, done: false, cached: false });
   } catch (error) {
     try {
-      const transcriptData = await fetchVideoTranscript(parsed.data.videoUrl);
-      processingCache.delete(transcriptData.videoId);
+      const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
+      processingCache.delete(videoId);
     } catch {
       return apiError(error instanceof Error ? error.message : "Unable to process this video.", 500);
     }
