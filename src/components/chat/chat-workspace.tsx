@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { providerCatalog } from "@/config/ai-providers";
+import { fetchVideoTranscriptInBrowser } from "@/lib/youtube-browser";
 import {
   ProcessedVideo,
   ProviderCatalogItem,
@@ -29,6 +30,12 @@ type ProcessingState = {
   stage: string;
   detail: string;
   progress: number;
+};
+
+type BrowserTranscript = {
+  videoId: string;
+  rawTranscript: string;
+  transcriptLanguage?: string;
 };
 
 const fallbackSettings: UserSettings = {
@@ -406,13 +413,40 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
     setError("");
 
     try {
+      let browserTranscript: BrowserTranscript | null = null;
+
+      setProcessingState({
+        taskId: "",
+        stage: "transcript",
+        detail: "Trying browser-side transcript access",
+        progress: 6
+      });
+
+      try {
+        browserTranscript = await fetchVideoTranscriptInBrowser(trimmedUrl);
+        setProcessingState({
+          taskId: "",
+          stage: "transcript",
+          detail: "Browser transcript retrieved",
+          progress: 10
+        });
+      } catch {
+        setProcessingState({
+          taskId: "",
+          stage: "transcript",
+          detail: "Browser transcript unavailable, falling back to server access",
+          progress: 8
+        });
+      }
+
       const data = await getJson<{ video?: ProcessedVideo; taskId?: string; done?: boolean }>("/api/process-video", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          videoUrl: trimmedUrl
+          videoUrl: trimmedUrl,
+          ...(browserTranscript ? { transcript: browserTranscript } : {})
         })
       });
 

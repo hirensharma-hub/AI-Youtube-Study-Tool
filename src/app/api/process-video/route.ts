@@ -14,8 +14,17 @@ import { collectVerificationReferences, extractVerificationQueries, verifyAndRef
 import { extractYouTubeVideoId, fetchVideoTranscript } from "@/lib/youtube";
 
 const processSchema = z.object({
-  videoUrl: z.string().trim().url()
+  videoUrl: z.string().trim().url(),
+  transcript: z
+    .object({
+      videoId: z.string().trim().min(11),
+      rawTranscript: z.string().trim().min(1),
+      transcriptLanguage: z.string().trim().min(1).optional()
+    })
+    .optional()
 });
+
+export const maxDuration = 300;
 
 type ProcessTaskState = {
   status: "running" | "completed" | "failed";
@@ -25,6 +34,8 @@ type ProcessTaskState = {
   video?: Awaited<ReturnType<typeof runProcessing>>;
   error?: string;
 };
+
+type TranscriptData = Awaited<ReturnType<typeof fetchVideoTranscript>>;
 
 type ProcessingCacheMap = Map<string, Promise<Awaited<ReturnType<typeof runProcessing>>>>;
 type ProcessTaskMap = Map<string, ProcessTaskState>;
@@ -218,15 +229,16 @@ async function generateDetailedNotes(input: {
 async function runProcessing(
   videoUrl: string,
   userId: string,
+  transcriptOverride?: TranscriptData,
   onProgress?: (state: Omit<ProcessTaskState, "status" | "video" | "error">) => void
 ) {
   const settings = await getUserSettings(userId);
   onProgress?.({
     stage: "transcript",
-    detail: "Fetching the YouTube transcript",
+    detail: transcriptOverride ? "Using the browser transcript" : "Fetching the YouTube transcript",
     progress: 8
   });
-  const transcriptData = await fetchVideoTranscript(videoUrl);
+  const transcriptData = transcriptOverride ?? (await fetchVideoTranscript(videoUrl));
 
   const cached = await getProcessedVideoByVideoId(transcriptData.videoId, {
     minVersion: CURRENT_PROCESSING_VERSION
@@ -359,6 +371,10 @@ function updateTaskProgress(taskId: string, state: Omit<ProcessTaskState, "statu
   });
 }
 
+function shouldProcessInline() {
+  return process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+}
+
 export async function GET(request: NextRequest) {
   const { user, response } = await requireApiUser();
   if (!user) {
@@ -399,11 +415,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
+    const transcriptOverride =
+      parsed.data.transcript && parsed.data.transcript.videoId === videoId
+        ? {
+            videoId,
+            rawTranscript: parsed.data.transcript.rawTranscript,
+            transcriptLanguage: parsed.data.transcript.transcriptLanguage
+          }
+        : undefined;
     const cached = await getProcessedVideoByVideoId(videoId, {
       minVersion: CURRENT_PROCESSING_VERSION
     });
     if (cached) {
       return NextResponse.json({ video: cached, cached: true, done: true });
+    }
+
+    if (shouldProcessInline()) {
+      const video = await runProcessing(parsed.data.videoUrl, user.id, transcriptOverride);
+      return NextResponse.json({ video, cached: false, done: true });
     }
 
     const inFlight = processingCache.get(videoId);
@@ -447,7 +476,9 @@ export async function POST(request: NextRequest) {
       progress: 2
     });
 
-    const nextPromise = runProcessing(parsed.data.videoUrl, user.id, (state) => updateTaskProgress(taskId, state));
+    const nextPromise = runProcessing(parsed.data.videoUrl, user.id, transcriptOverride, (state) =>
+      updateTaskProgress(taskId, state)
+    );
     processingCache.set(videoId, nextPromise);
 
     nextPromise
