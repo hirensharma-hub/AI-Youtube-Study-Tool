@@ -1,5 +1,14 @@
+// Helper to check if we are on the server or in the browser
+const isServer = typeof window === "undefined";
+
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
+  
+  // If we are in the browser, don't crash if the variable is missing
+  if (!isServer) {
+    return value ?? "";
+  }
+
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
@@ -29,6 +38,7 @@ function looksLikePlaceholder(name: string, value: string) {
     return true;
   }
 
+  // This was your previous error! It checks for < > brackets.
   if (name === "MONGODB_URI" && value.includes("<") && value.includes(">")) {
     return true;
   }
