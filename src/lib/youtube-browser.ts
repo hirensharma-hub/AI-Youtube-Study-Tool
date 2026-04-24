@@ -2,44 +2,69 @@
 
 import { extractYouTubeVideoId } from "@/lib/youtube";
 
-// These are the "names" your original code expects
 type BrowserTranscriptPayload = {
   videoId: string;
   rawTranscript: string;
   transcriptLanguage?: string;
 };
 
-/**
- * NEW SIMPLIFIED VERSION: 
- * Uses the library in layout.tsx to grab transcripts reliably.
- */
 export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<BrowserTranscriptPayload> {
   const videoId = extractYouTubeVideoId(videoUrl);
-  
   if (!videoId) {
     throw new Error("Could not find a valid YouTube Video ID");
   }
 
   try {
-    // 1. Check if the 'Helper' library we added to the HTML is there
-    const ytLib = (window as any).YoutubeTranscript;
+    // 1. Ask a public, open-source proxy for the video data
+    // This bypasses YouTube's IP blocks AND browser CORS rules!
+    const response = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
     
-    if (!ytLib) {
-      throw new Error("Transcript library not found. Ensure the script tag is in layout.tsx");
+    if (!response.ok) {
+      throw new Error("Proxy could not fetch video data.");
     }
 
-    // 2. Fetch the data from YouTube (using your home IP)
-    const data = await ytLib.fetchTranscript(videoId);
+    const data = await response.json();
+    const subtitles = data.subtitles || [];
+    
+    // 2. Find English captions (or fallback to whatever is first)
+    const englishSub = subtitles.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english'));
+    const targetSub = englishSub || subtitles[0];
 
-    // 3. Convert it into the exact format your 'chat-workspace.tsx' needs
+    if (!targetSub || !targetSub.url) {
+      throw new Error("No transcript available for this video.");
+    }
+
+    // 3. Download the actual subtitle file (VTT format)
+    const vttResponse = await fetch(targetSub.url);
+    if (!vttResponse.ok) {
+      throw new Error("Failed to download transcript text.");
+    }
+
+    const vttText = await vttResponse.text();
+
+    // 4. Clean up the file (remove timestamps like 00:00:01.000 --> 00:00:05.000)
+    const rawTranscript = vttText
+      .split('\n')
+      .filter(line => 
+        line.trim() !== '' && 
+        !line.includes('-->') && 
+        !line.startsWith('WEBVTT') &&
+        !line.startsWith('Kind:') &&
+        !line.startsWith('Language:')
+      )
+      .map(line => line.replace(/<[^>]+>/g, '').trim()) // Remove HTML tags
+      .join(' ')
+      .replace(/\s+/g, ' ') // Remove extra spaces
+      .trim();
+
     return {
       videoId: videoId,
-      transcriptLanguage: "en", // Defaulting to English
-      rawTranscript: data.map((part: any) => part.text).join(' ')
+      rawTranscript: rawTranscript,
+      transcriptLanguage: targetSub.code || "en"
     };
 
   } catch (error: any) {
     console.error("Browser transcript error:", error);
-    throw new Error("YouTube blocked this device or captions are unavailable.");
+    throw new Error("Failed to extract transcript from open-source proxy.");
   }
 }
