@@ -10,61 +10,42 @@ type BrowserTranscriptPayload = {
 
 export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<BrowserTranscriptPayload> {
   const videoId = extractYouTubeVideoId(videoUrl);
-  if (!videoId) {
-    throw new Error("Could not find a valid YouTube Video ID");
-  }
+  if (!videoId) throw new Error("Invalid Video ID");
+
+  // We use a CORS proxy to prevent the browser from blocking the request
+  const proxy = "https://corsproxy.io/?"; 
+  const apiUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
 
   try {
-    // 1. Ask a public, open-source proxy for the video data
-    // This bypasses YouTube's IP blocks AND browser CORS rules!
-    const response = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
-    
-    if (!response.ok) {
-      throw new Error("Proxy could not fetch video data.");
-    }
+    const response = await fetch(proxy + encodeURIComponent(apiUrl));
+    if (!response.ok) throw new Error("Proxy fetch failed");
 
     const data = await response.json();
     const subtitles = data.subtitles || [];
     
-    // 2. Find English captions (or fallback to whatever is first)
-    const englishSub = subtitles.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english'));
-    const targetSub = englishSub || subtitles[0];
+    // Find English or the first available
+    const targetSub = subtitles.find((s: any) => s.code === 'en') || subtitles[0];
+    if (!targetSub) throw new Error("No subtitles found");
 
-    if (!targetSub || !targetSub.url) {
-      throw new Error("No transcript available for this video.");
-    }
+    // Fetch the actual text via proxy
+    const vttRes = await fetch(proxy + encodeURIComponent(targetSub.url));
+    const vttText = await vttRes.text();
 
-    // 3. Download the actual subtitle file (VTT format)
-    const vttResponse = await fetch(targetSub.url);
-    if (!vttResponse.ok) {
-      throw new Error("Failed to download transcript text.");
-    }
-
-    const vttText = await vttResponse.text();
-
-    // 4. Clean up the file (remove timestamps like 00:00:01.000 --> 00:00:05.000)
-    const rawTranscript = vttText
+    // Clean the VTT format to plain text
+    const cleanText = vttText
       .split('\n')
-      .filter(line => 
-        line.trim() !== '' && 
-        !line.includes('-->') && 
-        !line.startsWith('WEBVTT') &&
-        !line.startsWith('Kind:') &&
-        !line.startsWith('Language:')
-      )
-      .map(line => line.replace(/<[^>]+>/g, '').trim()) // Remove HTML tags
-      .join(' ')
-      .replace(/\s+/g, ' ') // Remove extra spaces
-      .trim();
+      .filter(line => !line.includes('-->') && line.trim() && !line.startsWith('WEBVTT'))
+      .map(line => line.replace(/<[^>]+>/g, '').trim())
+      .join(' ');
 
     return {
-      videoId: videoId,
-      rawTranscript: rawTranscript,
-      transcriptLanguage: targetSub.code || "en"
+      videoId,
+      rawTranscript: cleanText,
+      transcriptLanguage: targetSub.code
     };
-
-  } catch (error: any) {
-    console.error("Browser transcript error:", error);
-    throw new Error("Failed to extract transcript from open-source proxy.");
+  } catch (error) {
+    console.error("Browser extraction failed:", error);
+    // This throw is important: it tells the app to try the server fallback
+    throw error; 
   }
 }
