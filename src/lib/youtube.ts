@@ -307,14 +307,23 @@ async function fetchTranscriptFromExternalBridge(videoUrl: string) {
     return null;
   }
 
-  const response = await fetch(`${env.transcriptBridgeUrl.replace(/\/$/, "")}/transcript`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(env.transcriptBridgeToken ? { Authorization: `Bearer ${env.transcriptBridgeToken}` } : {})
-    },
-    body: JSON.stringify({ videoUrl })
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${env.transcriptBridgeUrl.replace(/\/$/, "")}/transcript`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(env.transcriptBridgeToken ? { Authorization: `Bearer ${env.transcriptBridgeToken}` } : {})
+      },
+      body: JSON.stringify({ videoUrl })
+    });
+  } catch (error) {
+    throw new Error(
+      `The external transcript bridge could not be reached at ${env.transcriptBridgeUrl}. ` +
+        `Check that the Oracle service is running, port 4318 is open, and the URL is correct.`
+    );
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
@@ -383,9 +392,11 @@ export function extractYouTubeVideoId(input: string) {
 }
 
 export async function fetchVideoTranscript(videoUrl: string) {
-  const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl).catch(() => null);
-  if (bridgeTranscript) {
-    return bridgeTranscript;
+  if (env.transcriptBridgeUrl) {
+    const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl);
+    if (bridgeTranscript) {
+      return bridgeTranscript;
+    }
   }
 
   const videoId = extractYouTubeVideoId(videoUrl);

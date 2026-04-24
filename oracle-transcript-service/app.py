@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import tempfile
 from functools import lru_cache
@@ -29,9 +30,16 @@ class TranscriptRequest(BaseModel):
     videoUrl: HttpUrl
 
 
+def extract_youtube_video_id(video_url: str) -> str:
+    match = re.search(r"(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})", video_url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Could not extract a YouTube video ID from that URL.")
+    return match.group(1)
+
+
 def require_auth(authorization: Optional[str]):
     if not TRANSCRIPT_BRIDGE_TOKEN:
-      return
+        return
 
     expected = f"Bearer {TRANSCRIPT_BRIDGE_TOKEN}"
     if authorization != expected:
@@ -116,13 +124,17 @@ def health():
 def transcript(payload: TranscriptRequest, authorization: Optional[str] = Header(default=None)):
     require_auth(authorization)
 
+    video_id = extract_youtube_video_id(str(payload.videoUrl))
     audio_path = download_audio(str(payload.videoUrl))
     try:
         transcript_payload = transcribe_audio(audio_path)
         if not transcript_payload["rawTranscript"]:
             raise HTTPException(status_code=500, detail="Transcription completed but returned no text.")
 
-        return transcript_payload
+        return {
+            "videoId": video_id,
+            **transcript_payload
+        }
     except HTTPException:
         raise
     except Exception as exc:
