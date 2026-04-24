@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "transcript-bridge": "node ./scripts/transcript-bridge.mjs",
+    "install-transcript-bridge-macos": "node ./scripts/install-transcript-bridge-macos.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

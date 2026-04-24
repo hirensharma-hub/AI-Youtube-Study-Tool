@@ -56,6 +56,8 @@ It stores user accounts and processed videos in MongoDB Atlas, while all AI gene
   - Quiz generation helpers used by the on-demand quiz route
 - `src/lib/server-data.ts`
   - MongoDB-backed user settings and processed-video cache
+- `oracle-transcript-service/app.py`
+  - Optional Oracle-hosted audio-to-transcript microservice for YouTube URLs
 
 ## Environment variables
 
@@ -67,6 +69,8 @@ MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=tru
 MONGODB_DB=turbo_cloud_chat
 SESSION_SECRET=replace-with-a-long-random-secret
 ENCRYPTION_SECRET=replace-with-a-different-long-random-secret
+TRANSCRIPT_BRIDGE_URL=
+TRANSCRIPT_BRIDGE_TOKEN=
 OLLAMA_API_URL=https://ollama.com/v1/chat/completions
 OLLAMA_API_KEY=replace-with-your-ollama-cloud-api-key
 OLLAMA_MODEL=deepseek-v3.1:671b-cloud
@@ -78,6 +82,10 @@ OLLAMA_MODEL=deepseek-v3.1:671b-cloud
   - Your MongoDB Atlas connection string
 - `OLLAMA_API_URL`
   - The Ollama Cloud OpenAI-compatible chat endpoint
+- `TRANSCRIPT_BRIDGE_URL`
+  - Optional URL of your Oracle-hosted transcript service
+- `TRANSCRIPT_BRIDGE_TOKEN`
+  - Optional Bearer token shared with your transcript service
 - `OLLAMA_API_KEY`
   - Your Ollama Cloud API key
 - `OLLAMA_MODEL`
@@ -97,6 +105,54 @@ npm run dev
 ```
 
 Open the local URL shown in the terminal and sign in.
+
+## Optional local transcript bridge
+
+If your cloud deployment cannot fetch YouTube captions reliably, you can let the user's own Mac retrieve the transcript instead. The website will automatically try a local bridge on `http://127.0.0.1:4318` before falling back to cloud-side fetching.
+
+Run it manually:
+
+```bash
+cd "/Users/hiren/Documents/New project"
+npm run transcript-bridge
+```
+
+Install it once so it starts automatically when you log in on macOS:
+
+```bash
+cd "/Users/hiren/Documents/New project"
+npm run install-transcript-bridge-macos
+launchctl unload ~/Library/LaunchAgents/com.aiyoutube.study.transcript-bridge.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.aiyoutube.study.transcript-bridge.plist
+```
+
+## Optional Oracle transcript service
+
+If Vercel cannot fetch YouTube transcripts reliably, you can run a transcript service on an Oracle VM instead.
+
+Files:
+
+- `oracle-transcript-service/app.py`
+- `oracle-transcript-service/requirements.txt`
+
+On the Oracle VM:
+
+```bash
+sudo dnf install -y python3 python3-pip ffmpeg git
+git clone https://github.com/hirensharma-hub/AI-Youtube-Study-Tool.git
+cd AI-Youtube-Study-Tool/oracle-transcript-service
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+TRANSCRIPT_BRIDGE_TOKEN=your-token uvicorn app:app --host 0.0.0.0 --port 4318
+```
+
+Then point the main app at it with:
+
+```bash
+TRANSCRIPT_BRIDGE_URL=http://YOUR_ORACLE_VM_IP:4318
+TRANSCRIPT_BRIDGE_TOKEN=your-token
+```
 
 ## Product behavior
 

@@ -418,7 +418,7 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
       setProcessingState({
         taskId: "",
         stage: "transcript",
-        detail: "Trying browser-side transcript access",
+        detail: "Trying local or browser transcript access",
         progress: 6
       });
 
@@ -427,14 +427,14 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
         setProcessingState({
           taskId: "",
           stage: "transcript",
-          detail: "Browser transcript retrieved",
+          detail: "Transcript retrieved on this device",
           progress: 10
         });
       } catch {
         setProcessingState({
           taskId: "",
           stage: "transcript",
-          detail: "Browser transcript unavailable, falling back to server access",
+          detail: "Local transcript access unavailable, falling back to server access",
           progress: 8
         });
       }

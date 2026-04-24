@@ -1,5 +1,7 @@
 import { YoutubeTranscript } from "youtube-transcript";
 
+import { env } from "@/lib/env";
+
 type TranscriptEntry = {
   text: string;
   duration: number;
@@ -300,6 +302,46 @@ async function fetchTranscriptFromCaptionTracks(videoId: string) {
   throw new Error(`No transcript could be retrieved for this video. ${errors.join(" | ")}`);
 }
 
+async function fetchTranscriptFromExternalBridge(videoUrl: string) {
+  if (!env.transcriptBridgeUrl) {
+    return null;
+  }
+
+  const response = await fetch(`${env.transcriptBridgeUrl.replace(/\/$/, "")}/transcript`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(env.transcriptBridgeToken ? { Authorization: `Bearer ${env.transcriptBridgeToken}` } : {})
+    },
+    body: JSON.stringify({ videoUrl })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const message =
+      payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+        ? (payload as { error: string }).error
+        : `Transcript bridge returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as {
+    videoId?: string;
+    rawTranscript?: string;
+    transcriptLanguage?: string;
+  };
+
+  if (!payload.videoId || !payload.rawTranscript?.trim()) {
+    throw new Error("Transcript bridge returned an invalid transcript payload.");
+  }
+
+  return {
+    videoId: payload.videoId,
+    rawTranscript: payload.rawTranscript,
+    transcriptLanguage: payload.transcriptLanguage
+  };
+}
+
 export function extractYouTubeVideoId(input: string) {
   const trimmed = input.trim();
 
@@ -341,6 +383,11 @@ export function extractYouTubeVideoId(input: string) {
 }
 
 export async function fetchVideoTranscript(videoUrl: string) {
+  const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl).catch(() => null);
+  if (bridgeTranscript) {
+    return bridgeTranscript;
+  }
+
   const videoId = extractYouTubeVideoId(videoUrl);
 
   try {

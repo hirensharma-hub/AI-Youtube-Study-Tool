@@ -14,6 +14,8 @@ type BrowserTranscriptPayload = {
   transcriptLanguage?: string;
 };
 
+const LOCAL_TRANSCRIPT_BRIDGE = "http://127.0.0.1:4318";
+
 type PlayerClient = {
   clientName: string;
   clientVersion: string;
@@ -171,6 +173,25 @@ async function fetchCaptionTrackTranscript(track: BrowserCaptionTrack) {
 }
 
 export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<BrowserTranscriptPayload> {
+  try {
+    const localResponse = await fetch(`${LOCAL_TRANSCRIPT_BRIDGE}/transcript`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ videoUrl })
+    });
+
+    if (localResponse.ok) {
+      const localPayload = (await localResponse.json()) as BrowserTranscriptPayload;
+      if (localPayload.rawTranscript?.trim()) {
+        return localPayload;
+      }
+    }
+  } catch {
+    // Ignore local bridge errors and continue with pure browser attempts.
+  }
+
   const videoId = extractYouTubeVideoId(videoUrl);
   const payload = (await fetchPlayerPayload(videoId)) ?? (await fetchWatchPagePayload(videoId));
 
