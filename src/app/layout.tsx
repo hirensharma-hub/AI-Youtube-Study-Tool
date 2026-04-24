@@ -23,7 +23,6 @@ const themeBootScript = `
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <script src="https://cdn.jsdelivr.net/npm/youtube-transcript-api@1.1.1/dist/youtube-transcript-api.min.js"></script>
       <body className="app-shell">
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         {children}
