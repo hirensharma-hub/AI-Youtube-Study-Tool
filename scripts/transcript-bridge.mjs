@@ -149,13 +149,18 @@ function parseCookieJsonFile(filePath) {
 }
 
 function loadCookieHeader() {
-  const fromEnv = process.env.TRANSCRIPT_BRIDGE_COOKIE || "";
-  if (fromEnv.trim()) {
-    return fromEnv.trim();
+  const fromPrimaryEnv = process.env.YOUTUBE_COOKIE || "";
+  if (fromPrimaryEnv.trim()) {
+    return fromPrimaryEnv.trim();
+  }
+
+  const fromLegacyEnv = process.env.TRANSCRIPT_BRIDGE_COOKIE || "";
+  if (fromLegacyEnv.trim()) {
+    return fromLegacyEnv.trim();
   }
 
   if (!fs.existsSync(DEFAULT_COOKIE_FILE)) {
-    return "";
+    throw new Error("Server Configuration Error: Missing Session Identity.");
   }
 
   try {
@@ -163,18 +168,31 @@ function loadCookieHeader() {
   } catch {
     throw new Error(
       `Cookie file could not be parsed at ${DEFAULT_COOKIE_FILE}. ` +
-        `Use TRANSCRIPT_BRIDGE_COOKIE or provide a valid cookies.json file.`
+        `Use YOUTUBE_COOKIE, TRANSCRIPT_BRIDGE_COOKIE, or provide a valid cookie file.`
     );
   }
+}
+
+function getCookieSource() {
+  if ((process.env.YOUTUBE_COOKIE || "").trim()) {
+    return "env:youtubecookie";
+  }
+
+  if ((process.env.TRANSCRIPT_BRIDGE_COOKIE || "").trim()) {
+    return "env:bridgecookie";
+  }
+
+  if (fs.existsSync(DEFAULT_COOKIE_FILE)) {
+    return "file";
+  }
+
+  return "missing";
 }
 
 function buildBrowserHeaders() {
   const cookie = loadCookieHeader();
   if (!cookie) {
-    throw new Error(
-      "No browser cookie is configured for the transcript bridge. " +
-        "Set TRANSCRIPT_BRIDGE_COOKIE or provide cookies.json beside the bridge."
-    );
+    throw new Error("Server Configuration Error: Missing Session Identity.");
   }
 
   return {
@@ -568,7 +586,7 @@ const server = http.createServer(async (request, response) => {
     writeJson(response, 200, {
       ok: true,
       source: "stealth-transcript-bridge",
-      cookieSource: process.env.TRANSCRIPT_BRIDGE_COOKIE ? "env" : fs.existsSync(DEFAULT_COOKIE_FILE) ? "file" : "missing"
+      cookieSource: getCookieSource()
     });
     return;
   }
