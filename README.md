@@ -110,6 +110,39 @@ Open the local URL shown in the terminal and sign in.
 
 If your cloud deployment cannot fetch YouTube captions reliably, you can let the user's own Mac retrieve the transcript instead. The website will automatically try a local bridge on `http://127.0.0.1:4318` before falling back to cloud-side fetching.
 
+The bridge now uses a browser-identity strategy:
+
+- fetch the full YouTube watch page
+- extract `ytInitialPlayerResponse` from the HTML
+- read caption metadata from that JSON
+- request captions as `fmt=vtt`
+- strip WEBVTT metadata into plain transcript text
+
+To avoid repeated redeploys, do **not** hardcode cookies into the bridge. Use one of these instead:
+
+1. `TRANSCRIPT_BRIDGE_COOKIE`
+   - set a full browser cookie string as an environment variable
+2. `cookies.json`
+   - place a JSON file next to the project root and the bridge will load it automatically
+
+Supported `cookies.json` formats:
+
+```json
+[
+  { "name": "SID", "value": "..." },
+  { "name": "HSID", "value": "..." }
+]
+```
+
+or
+
+```json
+{
+  "SID": "...",
+  "HSID": "..."
+}
+```
+
 Run it manually:
 
 ```bash
@@ -124,6 +157,15 @@ cd "/Users/hiren/Documents/New project"
 npm run install-transcript-bridge-macos
 launchctl unload ~/Library/LaunchAgents/com.aiyoutube.study.transcript-bridge.plist 2>/dev/null || true
 launchctl load ~/Library/LaunchAgents/com.aiyoutube.study.transcript-bridge.plist
+```
+
+Useful bridge env vars:
+
+```bash
+TRANSCRIPT_BRIDGE_COOKIE="SID=...; HSID=..."
+TRANSCRIPT_BRIDGE_COOKIE_FILE=/absolute/path/to/cookies.json
+TRANSCRIPT_BRIDGE_USER_AGENT="Mozilla/5.0 ..."
+TRANSCRIPT_BRIDGE_REFERER="https://www.youtube.com/"
 ```
 
 ## Optional Oracle transcript service
