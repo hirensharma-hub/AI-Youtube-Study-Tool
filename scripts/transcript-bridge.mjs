@@ -179,6 +179,8 @@ function buildBrowserHeaders() {
 
   return {
     "User-Agent": DEFAULT_USER_AGENT,
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
     Cookie: cookie,
     Referer: DEFAULT_REFERER
@@ -244,7 +246,12 @@ function extractBalancedJson(source, anchorPattern) {
 }
 
 function parsePlayerResponse(html) {
-  const jsonText = extractBalancedJson(html, /(?:var\s+)?ytInitialPlayerResponse\s*=\s*/);
+  const directMatch = html.match(
+    /(?:var\s+)?ytInitialPlayerResponse\s*=\s*({.+?})\s*(?:;|<\/script>)/
+  );
+
+  const jsonText =
+    directMatch?.[1] || extractBalancedJson(html, /(?:var\s+)?ytInitialPlayerResponse\s*=\s*/);
 
   try {
     return JSON.parse(jsonText);
@@ -417,7 +424,11 @@ async function fetchTranscript(videoUrl) {
     throw new Error(`Watch page returned HTTP ${response.status}.`);
   }
 
-  if (html.includes("Our systems have detected unusual traffic") || html.includes("/sorry/")) {
+  if (
+    html.includes("Our systems have detected unusual traffic") ||
+    html.includes("/sorry/") ||
+    html.includes("google.com/sorry")
+  ) {
     throw new Error("Google Sorry wall detected. Refresh the browser cookie used by the transcript bridge.");
   }
 
