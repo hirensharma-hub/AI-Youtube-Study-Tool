@@ -328,8 +328,12 @@ async function fetchTranscriptFromExternalBridge(videoUrl: string) {
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     const message =
-      payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
-        ? (payload as { error: string }).error
+      payload && typeof payload === "object"
+        ? typeof (payload as { error?: unknown }).error === "string"
+          ? (payload as { error: string }).error
+          : typeof (payload as { detail?: unknown }).detail === "string"
+            ? (payload as { detail: string }).detail
+            : `Transcript bridge returned HTTP ${response.status}.`
         : `Transcript bridge returned HTTP ${response.status}.`;
     throw new Error(message);
   }

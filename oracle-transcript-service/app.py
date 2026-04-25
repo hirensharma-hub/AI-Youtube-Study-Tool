@@ -125,8 +125,9 @@ def transcript(payload: TranscriptRequest, authorization: Optional[str] = Header
     require_auth(authorization)
 
     video_id = extract_youtube_video_id(str(payload.videoUrl))
-    audio_path = download_audio(str(payload.videoUrl))
+    audio_path: Optional[str] = None
     try:
+        audio_path = download_audio(str(payload.videoUrl))
         transcript_payload = transcribe_audio(audio_path)
         if not transcript_payload["rawTranscript"]:
             raise HTTPException(status_code=500, detail="Transcription completed but returned no text.")
@@ -140,4 +141,5 @@ def transcript(payload: TranscriptRequest, authorization: Optional[str] = Header
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
-        cleanup_file(audio_path)
+        if audio_path:
+            cleanup_file(audio_path)
