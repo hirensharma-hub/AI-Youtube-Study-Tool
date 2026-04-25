@@ -125,7 +125,12 @@ To avoid repeated redeploys, do **not** hardcode cookies into the bridge. Use on
 2. `cookies.json`
    - place a JSON file next to the project root and the bridge will load it automatically
 
-Supported `cookies.json` formats:
+Supported cookie file formats:
+
+- Netscape `cookies.txt` exported from the browser
+- JSON array/object/string formats like below
+
+Supported JSON examples:
 
 ```json
 [

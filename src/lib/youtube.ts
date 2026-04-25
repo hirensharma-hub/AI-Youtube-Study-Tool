@@ -397,9 +397,14 @@ export function extractYouTubeVideoId(input: string) {
 
 export async function fetchVideoTranscript(videoUrl: string) {
   if (env.transcriptBridgeUrl) {
-    const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl);
-    if (bridgeTranscript) {
-      return bridgeTranscript;
+    try {
+      const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl);
+      if (bridgeTranscript) {
+        return bridgeTranscript;
+      }
+    } catch {
+      // If the external bridge fails for a specific video/IP, continue with
+      // in-process fallback extractors instead of failing the whole request.
     }
   }
 

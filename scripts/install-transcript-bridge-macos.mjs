@@ -8,9 +8,29 @@ const plistPath = path.join(launchAgentsDir, "com.aiyoutube.study.transcript-bri
 const nodePath = process.execPath;
 const scriptPath = path.join(cwd, "scripts", "transcript-bridge.mjs");
 const logDir = path.join(cwd, ".bridge-logs");
+const bridgedEnvKeys = [
+  "TRANSCRIPT_BRIDGE_HOST",
+  "TRANSCRIPT_BRIDGE_PORT",
+  "TRANSCRIPT_BRIDGE_TOKEN",
+  "TRANSCRIPT_BRIDGE_USER_AGENT",
+  "TRANSCRIPT_BRIDGE_REFERER",
+  "TRANSCRIPT_BRIDGE_COOKIE",
+  "TRANSCRIPT_BRIDGE_COOKIE_FILE"
+];
+const bridgedEnvEntries = bridgedEnvKeys
+  .map((key) => [key, process.env[key]])
+  .filter(([, value]) => typeof value === "string" && value.length > 0);
 
 fs.mkdirSync(launchAgentsDir, { recursive: true });
 fs.mkdirSync(logDir, { recursive: true });
+
+const environmentVariablesBlock = bridgedEnvEntries.length
+  ? `
+    <key>EnvironmentVariables</key>
+    <dict>
+${bridgedEnvEntries.map(([key, value]) => `      <key>${key}</key>\n      <string>${value}</string>`).join("\n")}
+    </dict>`
+  : "";
 
 const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,6 +45,7 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
     </array>
     <key>WorkingDirectory</key>
     <string>${cwd}</string>
+${environmentVariablesBlock}
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

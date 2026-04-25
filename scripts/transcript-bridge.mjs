@@ -100,8 +100,31 @@ function decodeHtmlEntities(value) {
     .replace(/&apos;/g, "'");
 }
 
+function parseNetscapeCookieFile(raw) {
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("#") || line.startsWith("#HttpOnly_"))
+    .map((line) => line.replace(/^#HttpOnly_/, ""))
+    .map((line) => line.split("\t"))
+    .filter((parts) => parts.length >= 7)
+    .map((parts) => {
+      const name = parts[5];
+      const value = parts[6];
+      return name && value ? `${name}=${value}` : "";
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
 function parseCookieJsonFile(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
+
+  if (/^\s*#\s*Netscape\s+HTTP\s+Cookie\s+File/i.test(raw) || /^\s*#HttpOnly_/m.test(raw)) {
+    return parseNetscapeCookieFile(raw);
+  }
+
   const parsed = JSON.parse(raw);
 
   if (typeof parsed === "string") {
@@ -231,20 +254,153 @@ function parsePlayerResponse(html) {
 }
 
 function parseTranscript(vttText) {
-  return vttText
-    .replace(/^WEBVTT[\s\S]*?\n\n/, "")
-    .replace(/NOTE[\s\S]*?(?:\n\n|$)/g, " ")
-    .replace(/Kind:[^\n]*\n?/gi, " ")
-    .replace(/Language:[^\n]*\n?/gi, " ")
-    .replace(/^\d+\s*$/gm, " ")
-    .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}[^\n]*$/gm, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+  const normalized = String(vttText || "").replace(/\r/g, "");
+  const lines = normalized.split("\n");
+  const textParts = [];
+  let skipBlock = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      skipBlock = false;
+      continue;
+    }
+
+    if (/^WEBVTT\b/i.test(line) || /^Kind:/i.test(line) || /^Language:/i.test(line)) {
+      continue;
+    }
+
+    if (/^(NOTE|STYLE|REGION)\b/i.test(line)) {
+      skipBlock = true;
+      continue;
+    }
+
+    if (skipBlock) {
+      continue;
+    }
+
+    if (/^\d+$/.test(line)) {
+      continue;
+    }
+
+    if (
+      /^\d{1,2}:\d{2}(?::\d{2})?[\.,]\d{3}\s+-->\s+\d{1,2}:\d{2}(?::\d{2})?[\.,]\d{3}/.test(line)
+    ) {
+      continue;
+    }
+
+    const cleaned = line
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (cleaned) {
+      textParts.push(cleaned);
+    }
+  }
+
+  return textParts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function parseJson3Transcript(json3) {
+  if (!json3 || !Array.isArray(json3.events)) {
+    return "";
+  }
+
+  const textParts = [];
+  for (const event of json3.events) {
+    if (!Array.isArray(event?.segs)) {
+      continue;
+    }
+
+    for (const segment of event.segs) {
+      const text = String(segment?.utf8 || "").replace(/\s+/g, " ").trim();
+      if (text) {
+        textParts.push(text);
+      }
+    }
+  }
+
+  return textParts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function parseXmlTranscript(xmlText) {
+  const normalized = String(xmlText || "").replace(/\r/g, "");
+  const textParts = [];
+
+  const textNodeRegex = /<text\b[^>]*>([\s\S]*?)<\/text>/gi;
+  for (const match of normalized.matchAll(textNodeRegex)) {
+    const content = decodeHtmlEntities(match[1] || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (content) {
+      textParts.push(content);
+    }
+  }
+
+  if (textParts.length) {
+    return textParts.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  const pNodeRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  for (const match of normalized.matchAll(pNodeRegex)) {
+    const content = decodeHtmlEntities(match[1] || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (content) {
+      textParts.push(content);
+    }
+  }
+
+  return textParts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+async function fetchTranscriptWithLibrary(videoId, browserHeaders, preferredLanguage = "en") {
+  const { fetchTranscript: fetchTranscriptViaLib } = await import(
+    "youtube-transcript/dist/youtube-transcript.esm.js"
+  );
+
+  const wrappedFetch = (input, init = {}) =>
+    fetch(input, {
+      ...init,
+      headers: {
+        ...browserHeaders,
+        ...(init.headers || {})
+      }
+    });
+
+  const entries = await fetchTranscriptViaLib(videoId, {
+    lang: preferredLanguage,
+    fetch: wrappedFetch
+  });
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return null;
+  }
+
+  const rawTranscript = entries
+    .map((entry) => String(entry?.text || "").trim())
+    .filter(Boolean)
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (!rawTranscript) {
+    return null;
+  }
+
+  return {
+    rawTranscript,
+    transcriptLanguage: entries[0]?.lang || preferredLanguage
+  };
 }
 
 async function fetchTranscript(videoUrl) {
@@ -269,6 +425,20 @@ async function fetchTranscript(videoUrl) {
   const tracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
 
   if (!Array.isArray(tracks) || tracks.length === 0) {
+    try {
+      const fallback = await fetchTranscriptWithLibrary(videoId, browserHeaders, "en");
+      if (fallback) {
+        return {
+          videoId,
+          transcriptLanguage: fallback.transcriptLanguage,
+          rawTranscript: fallback.rawTranscript
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      throw new Error(`Captions object not found in player response. libraryFallbackError=${message}`);
+    }
+
     throw new Error("Captions object not found in player response.");
   }
 
@@ -277,22 +447,85 @@ async function fetchTranscript(videoUrl) {
     throw new Error("Caption track metadata was found, but the baseUrl was missing.");
   }
 
+  const debug = {
+    trackVssId: track.vssId || null,
+    trackLanguageCode: track.languageCode || null
+  };
+
   const captionResponse = await fetch(`${track.baseUrl}&fmt=vtt`, {
-    headers: {
-      "User-Agent": DEFAULT_USER_AGENT,
-      Referer: DEFAULT_REFERER
-    }
+    headers: browserHeaders
   });
+  debug.vttStatus = captionResponse.status;
+  debug.vttContentType = captionResponse.headers.get("content-type") || null;
 
   if (!captionResponse.ok) {
     throw new Error(`Caption file request failed with HTTP ${captionResponse.status}.`);
   }
 
   const vttText = decodeHtmlEntities(await captionResponse.text());
-  const rawTranscript = parseTranscript(vttText);
+  debug.vttLength = vttText.length;
+  debug.vttPreview = vttText.slice(0, 180).replace(/\s+/g, " ");
+  let rawTranscript = parseTranscript(vttText);
+  debug.vttParsedLength = rawTranscript.length;
 
   if (!rawTranscript) {
-    throw new Error("VTT captions were fetched, but no transcript text could be parsed.");
+    const json3Response = await fetch(`${track.baseUrl}&fmt=json3`, {
+      headers: browserHeaders
+    });
+    debug.json3Status = json3Response.status;
+    debug.json3ContentType = json3Response.headers.get("content-type") || null;
+
+    if (json3Response.ok) {
+      const json3Text = await json3Response.text();
+      debug.json3Length = json3Text.length;
+      debug.json3Preview = json3Text.slice(0, 180).replace(/\s+/g, " ");
+      if (json3Text.trim()) {
+        try {
+          const json3 = JSON.parse(json3Text);
+          rawTranscript = parseJson3Transcript(json3);
+          debug.json3ParsedLength = rawTranscript.length;
+        } catch {
+          // Some caption endpoints return empty or malformed JSON despite 200.
+          // Keep rawTranscript empty and let the final error explain parsing failed.
+          debug.json3ParseError = "invalid-json";
+        }
+      }
+    }
+  }
+
+  if (!rawTranscript) {
+    const rawCaptionResponse = await fetch(track.baseUrl, {
+      headers: browserHeaders
+    });
+    debug.rawStatus = rawCaptionResponse.status;
+    debug.rawContentType = rawCaptionResponse.headers.get("content-type") || null;
+
+    if (rawCaptionResponse.ok) {
+      const rawCaptionText = decodeHtmlEntities(await rawCaptionResponse.text());
+      debug.rawLength = rawCaptionText.length;
+      debug.rawPreview = rawCaptionText.slice(0, 180).replace(/\s+/g, " ");
+      rawTranscript = parseXmlTranscript(rawCaptionText);
+      debug.rawParsedLength = rawTranscript.length;
+    }
+  }
+
+  if (!rawTranscript) {
+    try {
+      const fallback = await fetchTranscriptWithLibrary(videoId, browserHeaders, track.languageCode || "en");
+      if (fallback) {
+        rawTranscript = fallback.rawTranscript;
+        debug.libraryParsedLength = rawTranscript.length;
+        debug.libraryFallbackLanguage = fallback.transcriptLanguage;
+      }
+    } catch (error) {
+      debug.libraryFallbackError = error instanceof Error ? error.message : "unknown";
+    }
+  }
+
+  if (!rawTranscript) {
+    throw new Error(
+      `VTT captions were fetched, but no transcript text could be parsed. debug=${JSON.stringify(debug)}`
+    );
   }
 
   return {
