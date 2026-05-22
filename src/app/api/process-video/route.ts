@@ -9,9 +9,17 @@ import {
 import { apiError, parseJsonBody, requireApiUser } from "@/lib/api";
 import { env } from "@/lib/env";
 import { generateLessonQuiz } from "@/lib/quiz";
-import { CURRENT_PROCESSING_VERSION, getProcessedVideoByVideoId, getUserSettings, saveProcessedVideo } from "@/lib/server-data";
-import { collectVerificationReferences, extractVerificationQueries, verifyAndRefineNotes } from "@/lib/web-verify";
-import { extractYouTubeVideoId, fetchVideoTranscript } from "@/lib/youtube";
+import {
+  CURRENT_PROCESSING_VERSION,
+  getUserSettings,
+  saveProcessedVideo
+} from "@/lib/server-data";
+import {
+  collectVerificationReferences,
+  extractVerificationQueries,
+  verifyAndRefineNotes
+} from "@/lib/web-verify";
+import { extractYouTubeVideoId } from "@/lib/youtube";
 
 const processSchema = z.object({
   videoUrl: z.string().trim().url(),
@@ -36,7 +44,11 @@ type ProcessTaskState = {
   error?: string;
 };
 
-type TranscriptData = Awaited<ReturnType<typeof fetchVideoTranscript>>;
+type TranscriptData = {
+  videoId: string;
+  rawTranscript: string;
+  transcriptLanguage?: string;
+};
 
 type ProcessingCacheMap = Map<string, Promise<Awaited<ReturnType<typeof runProcessing>>>>;
 type ProcessTaskMap = Map<string, ProcessTaskState>;
@@ -105,7 +117,10 @@ async function refineTranscriptForStudy(input: {
   const cleanedChunks: string[] = [];
 
   for (let index = 0; index < chunks.length; index += 1) {
-    input.onProgress?.(`Cleaning the lesson transcript (${index + 1}/${chunks.length})`, 18 + Math.round((index / Math.max(chunks.length, 1)) * 12));
+    input.onProgress?.(
+      `Cleaning the lesson transcript (${index + 1}/${chunks.length})`,
+      18 + Math.round((index / Math.max(chunks.length, 1)) * 12)
+    );
 
     try {
       const cleanedChunk = await generateChatCompletion({
@@ -157,7 +172,10 @@ async function generateDetailedNotes(input: {
   const chunkNotes: string[] = [];
 
   for (let index = 0; index < chunks.length; index += 1) {
-    input.onProgress?.(`Generating detailed notes (${index + 1}/${chunks.length})`, 38 + Math.round((index / Math.max(chunks.length, 1)) * 18));
+    input.onProgress?.(
+      `Generating detailed notes (${index + 1}/${chunks.length})`,
+      38 + Math.round((index / Math.max(chchunks.length, 1)) * 18)
+    );
 
     const sectionNotes = await generateChatCompletion({
       endpoint: input.endpoint,
@@ -234,12 +252,19 @@ async function runProcessing(
   onProgress?: (state: Omit<ProcessTaskState, "status" | "video" | "error">) => void
 ) {
   const settings = await getUserSettings(userId);
+
   onProgress?.({
     stage: "transcript",
-    detail: transcriptOverride ? "Using the browser transcript" : "Fetching the YouTube transcript",
+    detail: transcriptOverride ? "Using the browser transcript" : "No transcript provided",
     progress: 8
   });
-  const transcriptData = transcriptOverride ?? (await fetchVideoTranscript(videoUrl));
+
+  // ⭐ KEY CHANGE: we now REQUIRE a transcript from the client
+  if (!transcriptOverride) {
+    throw new Error("No transcript provided. Please fetch the transcript in the browser first.");
+  }
+
+  const transcriptData = transcriptOverride;
 
   onProgress?.({
     stage: "cleaning",
@@ -400,7 +425,10 @@ export async function POST(request: NextRequest) {
   try {
     body = await parseJsonBody(request);
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "The request payload was invalid.", 400);
+    return apiError(
+      error instanceof Error ? error.message : "The request payload was invalid.",
+      400
+    );
   }
 
   const parsed = processSchema.safeParse(body);
@@ -410,7 +438,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
-    const transcriptOverride =
+
+    const transcriptOverride: TranscriptData | undefined =
       parsed.data.transcript && parsed.data.transcript.videoId === videoId
         ? {
             videoId,
@@ -424,6 +453,7 @@ export async function POST(request: NextRequest) {
               transcriptLanguage: "manual"
             }
           : undefined;
+
     if (shouldProcessInline()) {
       const video = await runProcessing(parsed.data.videoUrl, user.id, transcriptOverride);
       return NextResponse.json({ video, cached: false, done: true });
@@ -470,8 +500,11 @@ export async function POST(request: NextRequest) {
       progress: 2
     });
 
-    const nextPromise = runProcessing(parsed.data.videoUrl, user.id, transcriptOverride, (state) =>
-      updateTaskProgress(taskId, state)
+    const nextPromise = runProcessing(
+      parsed.data.videoUrl,
+      user.id,
+      transcriptOverride,
+      (state) => updateTaskProgress(taskId, state)
     );
     processingCache.set(videoId, nextPromise);
 
@@ -503,11 +536,17 @@ export async function POST(request: NextRequest) {
       const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
       processingCache.delete(videoId);
     } catch {
-      return apiError(error instanceof Error ? error.message : "Unable to process this video.", 500);
+      return apiError(
+        error instanceof Error ? error.message : "Unable to process this video.",
+        500
+      );
     }
 
-    const message = error instanceof Error ? error.message : "Unable to process this video.";
-    const statusCode = message.includes("System busy, please try again in 15 minutes") ? 503 : 500;
+    const message =
+      error instanceof Error ? error.message : "Unable to process this video.";
+    const statusCode = message.includes("System busy, please try again in 15 minutes")
+      ? 503
+      : 500;
     return apiError(message, statusCode);
   }
 }
