@@ -73,7 +73,9 @@ export function YoutubeTranscripter() {
       return "";
     }
 
-    return withTimestamps ? buildTimestampedTranscript(transcript.segments) : transcript.text;
+    return withTimestamps && transcript.segments.length
+      ? buildTimestampedTranscript(transcript.segments)
+      : transcript.text;
   }, [transcript, withTimestamps]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -133,11 +135,11 @@ export function YoutubeTranscripter() {
       <div className="transcripter-orb transcripter-orb-two" />
       <section className="transcripter-shell">
         <div className="transcripter-hero">
-          <p className="marketing-kicker">Free YouTube transcript extractor</p>
-          <h1>Paste a video. Pull the transcript. Keep moving.</h1>
+          <p className="marketing-kicker">Free YouTube audio transcriber</p>
+          <h1>Paste a video. Transcribe the audio. Keep moving.</h1>
           <p className="muted transcripter-lead">
-            This runs through our own server route and YouTube caption tracks, with no paid transcript API key.
-            If a video has no available captions or YouTube blocks automated access, the app will tell you cleanly.
+            This page calls our own transcription API first, so it can create text from the video audio instead of
+            depending on YouTube&apos;s caption tracks. Captions are only used as a fallback when the audio transcriber is not configured.
           </p>
         </div>
 
@@ -192,7 +194,8 @@ export function YoutubeTranscripter() {
             <div className="transcripter-meta-row">
               <span>Video ID: {transcript.videoId}</span>
               <span>Language: {transcript.language}</span>
-              <span>{transcript.segmentCount.toLocaleString()} segments</span>
+              <span>Provider: {transcript.provider}</span>
+              <span>{transcript.segmentCount.toLocaleString()} timestamp segments</span>
               <span>{transcript.characterCount.toLocaleString()} chars</span>
             </div>
           ) : null}
@@ -207,8 +210,8 @@ export function YoutubeTranscripter() {
 
         <section className="transcripter-notes">
           <article className="panel">
-            <strong>No account needed</strong>
-            <p className="muted">This standalone page does not use MongoDB, Ollama, or paid transcript services.</p>
+            <strong>No YouTube captions required</strong>
+            <p className="muted">When the transcription service is deployed, text is generated from audio with Whisper.</p>
           </article>
           <article className="panel">
             <strong>Realistic limits</strong>
