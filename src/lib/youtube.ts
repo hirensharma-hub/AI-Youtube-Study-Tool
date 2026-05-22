@@ -355,6 +355,56 @@ async function fetchTranscriptFromExternalBridge(videoUrl: string) {
   };
 }
 
+async function fetchTranscriptFromTubeText(videoId: string) {
+  const baseUrl = env.tubeTextApiUrl.replace(/\/$/, "");
+  let response: Response;
+
+  try {
+    response = await fetch(`${baseUrl}/youtube/transcript?video_id=${encodeURIComponent(videoId)}`, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+  } catch (error) {
+    throw new Error("TubeText could not be reached right now.");
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        success?: boolean;
+        data?: {
+          video_id?: string;
+          full_text?: string;
+          transcript?: string[];
+        };
+        error?: string;
+        message?: string;
+      }
+    | null;
+
+  if (!response.ok || !payload?.success) {
+    const message =
+      payload?.error ||
+      payload?.message ||
+      `TubeText returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  const rawTranscript =
+    payload.data?.full_text?.trim() ||
+    (Array.isArray(payload.data?.transcript) ? payload.data?.transcript.join(" ").trim() : "");
+
+  if (!rawTranscript) {
+    throw new Error("TubeText returned an empty transcript.");
+  }
+
+  return {
+    videoId: payload.data?.video_id?.trim() || videoId,
+    rawTranscript,
+    transcriptLanguage: "unknown"
+  };
+}
+
 export function extractYouTubeVideoId(input: string) {
   const trimmed = input.trim();
 
@@ -396,19 +446,29 @@ export function extractYouTubeVideoId(input: string) {
 }
 
 export async function fetchVideoTranscript(videoUrl: string) {
+  const videoId = extractYouTubeVideoId(videoUrl);
+
+  try {
+    return await fetchTranscriptFromTubeText(videoId);
+  } catch {
+    // Fall back to the rest of the transcript pipeline if TubeText fails.
+  }
+
   if (env.transcriptBridgeUrl) {
     try {
       const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl);
       if (bridgeTranscript) {
         return bridgeTranscript;
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("System busy, please try again in 15 minutes")) {
+        throw error;
+      }
+
       // If the external bridge fails for a specific video/IP, continue with
       // in-process fallback extractors instead of failing the whole request.
     }
   }
-
-  const videoId = extractYouTubeVideoId(videoUrl);
 
   try {
     const transcript = await Promise.race([
