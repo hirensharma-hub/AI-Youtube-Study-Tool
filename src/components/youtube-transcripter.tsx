@@ -2,6 +2,10 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
+// NEW IMPORTS (required for browser transcript fetching)
+import { extractVideoId } from "@/utils/extractVideoId";
+import { fetchTranscriptClient } from "@/utils/fetchTranscriptClient";
+
 type TranscriptSegment = {
   text: string;
   start: number;
@@ -10,7 +14,6 @@ type TranscriptSegment = {
 };
 
 type TranscriptResponse = {
-  videoUrl: string;
   videoId: string;
   language: string;
   provider: string;
@@ -47,19 +50,6 @@ function downloadText(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-async function readJson<T>(response: Response): Promise<T> {
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
-        ? payload.error
-        : "Transcript request failed.";
-    throw new Error(message);
-  }
-
-  return payload as T;
-}
-
 export function YoutubeTranscripter() {
   const [videoUrl, setVideoUrl] = useState("");
   const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
@@ -69,21 +59,18 @@ export function YoutubeTranscripter() {
   const [error, setError] = useState("");
 
   const outputText = useMemo(() => {
-    if (!transcript) {
-      return "";
-    }
+    if (!transcript) return "";
 
     return withTimestamps && transcript.segments.length
       ? buildTimestampedTranscript(transcript.segments)
       : transcript.text;
   }, [transcript, withTimestamps]);
 
+  // ⭐ UPDATED handleSubmit — now fetches transcript in the browser
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedUrl = videoUrl.trim();
-    if (!trimmedUrl || loading) {
-      return;
-    }
+    if (!trimmedUrl || loading) return;
 
     setLoading(true);
     setCopied(false);
@@ -91,30 +78,31 @@ export function YoutubeTranscripter() {
     setTranscript(null);
 
     try {
-      const response = await fetch("/api/youtube-transcript", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ videoUrl: trimmedUrl })
-      });
-      const data = await readJson<TranscriptResponse>(response);
+      const videoId = extractVideoId(trimmedUrl);
+      if (!videoId) {
+        setError("Invalid YouTube URL");
+        setLoading(false);
+        return;
+      }
+
+      const data = await fetchTranscriptClient(videoId);
+
+      if (!data) {
+        setError("No transcript available for this video.");
+        setLoading(false);
+        return;
+      }
+
       setTranscript(data);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to fetch that transcript right now."
-      );
+    } catch (err) {
+      setError("Unable to fetch transcript.");
     } finally {
       setLoading(false);
     }
   }
 
   async function handleCopy() {
-    if (!outputText) {
-      return;
-    }
+    if (!outputText) return;
 
     await navigator.clipboard.writeText(outputText);
     setCopied(true);
@@ -122,9 +110,7 @@ export function YoutubeTranscripter() {
   }
 
   function handleDownload() {
-    if (!transcript || !outputText) {
-      return;
-    }
+    if (!transcript || !outputText) return;
 
     downloadText(`youtube-transcript-${transcript.videoId}.txt`, outputText);
   }
@@ -138,8 +124,7 @@ export function YoutubeTranscripter() {
           <p className="marketing-kicker">Free YouTube audio transcriber</p>
           <h1>Paste a video. Transcribe the audio. Keep moving.</h1>
           <p className="muted transcripter-lead">
-            This page calls our own transcription API first, so it can create text from the video audio instead of
-            depending on YouTube&apos;s caption tracks. Captions are only used as a fallback when the audio transcriber is not configured.
+            This page now fetches transcripts directly from YouTube using your own IP address.
           </p>
         </div>
 
@@ -211,11 +196,11 @@ export function YoutubeTranscripter() {
         <section className="transcripter-notes">
           <article className="panel">
             <strong>No YouTube captions required</strong>
-            <p className="muted">When the transcription service is deployed, text is generated from audio with Whisper.</p>
+            <p className="muted">This tool now fetches transcripts directly from YouTube’s timedtext API.</p>
           </article>
           <article className="panel">
             <strong>Realistic limits</strong>
-            <p className="muted">Free and unlimited on our side, but YouTube can rate-limit or hide captions for some videos.</p>
+            <p className="muted">Some videos may not have captions available.</p>
           </article>
           <article className="panel">
             <strong>Export friendly</strong>
