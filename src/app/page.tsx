@@ -21,6 +21,9 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="marketing-nav-actions">
+            <Link className="button button-secondary" href="/transcripter">
+              Free transcripter
+            </Link>
             <Link className="button button-secondary" href="/login">
               Sign in
             </Link>
@@ -41,6 +44,9 @@ export default async function HomePage() {
               answers in one place.
             </p>
             <div className="marketing-cta-row">
+              <Link className="button button-secondary" href="/transcripter">
+                Try transcript tool
+              </Link>
               <Link className="button button-primary" href="/signup">
                 Create account
               </Link>

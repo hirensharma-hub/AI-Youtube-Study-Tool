@@ -70,14 +70,7 @@ def download_audio(video_url: str) -> str:
         "outtmpl": output_template,
         "quiet": True,
         "noplaylist": True,
-        "nocheckcertificate": True,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "128"
-            }
-        ]
+        "nocheckcertificate": True
     }
 
     try:

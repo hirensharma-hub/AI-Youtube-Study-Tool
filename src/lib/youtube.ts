@@ -624,12 +624,23 @@ export async function fetchVideoTranscript(videoUrl: string) {
 
   const providers: TranscriptProvider[] = [
     {
-      id: "community-transcript-api",
-      fetch: ({ videoUrl: nextVideoUrl }) => fetchTranscriptFromCommunityApi(nextVideoUrl)
+      id: "youtube-caption-tracks",
+      fetch: async ({ videoId: nextVideoId }) => {
+        const fallback = await fetchTranscriptFromCaptionTracks(nextVideoId);
+        if (!fallback.rawTranscript.trim()) {
+          throw new Error("No transcript was found for this video.");
+        }
+
+        return fallback;
+      }
     },
     {
-      id: "tubetext",
-      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromTubeText(nextVideoId)
+      id: "playzone-youtube-transcript",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromPlayzoneLib(nextVideoId)
+    },
+    {
+      id: "youtube-transcript",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromYoutubeTranscriptLib(nextVideoId)
     }
   ];
 
@@ -640,27 +651,19 @@ export async function fetchVideoTranscript(videoUrl: string) {
     });
   }
 
-  providers.push(
-    {
-      id: "playzone-youtube-transcript",
-      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromPlayzoneLib(nextVideoId)
-    },
-    {
-      id: "youtube-transcript",
-      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromYoutubeTranscriptLib(nextVideoId)
-    },
-    {
-      id: "youtube-caption-tracks",
-      fetch: async ({ videoId: nextVideoId }) => {
-        const fallback = await fetchTranscriptFromCaptionTracks(nextVideoId);
-        if (!fallback.rawTranscript.trim()) {
-          throw new Error("No transcript was found for this video.");
-        }
+  if (env.communityTranscriptApiUrl) {
+    providers.push({
+      id: "community-transcript-api",
+      fetch: ({ videoUrl: nextVideoUrl }) => fetchTranscriptFromCommunityApi(nextVideoUrl)
+    });
+  }
 
-        return fallback;
-      }
-    }
-  );
+  if (env.tubeTextApiUrl) {
+    providers.push({
+      id: "tubetext",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromTubeText(nextVideoId)
+    });
+  }
 
   for (const provider of providers) {
     try {

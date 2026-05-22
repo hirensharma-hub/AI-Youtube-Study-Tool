@@ -22,6 +22,10 @@ It stores user accounts and processed videos in MongoDB Atlas, while all AI gene
 
 ## Main routes
 
+- `GET /transcripter`
+  - Free standalone YouTube transcript page with copy/download support
+- `POST /api/youtube-transcript`
+  - Public caption-track transcript endpoint; no account, database, AI key, or paid transcript API required
 - `POST /api/process-video`
   - Extracts transcript, cleans it, and generates notes
 - `POST /api/generate-quiz`
@@ -203,6 +207,8 @@ TRANSCRIPT_BRIDGE_TOKEN=your-token
 
 ## Product behavior
 
+- The standalone transcripter uses YouTube caption tracks directly and does not call paid transcript APIs.
+- Transcript fetching is free and unlimited on this app's side, but depends on captions being available and YouTube not blocking automated caption access.
 - The homepage is no longer a chatbot
 - The primary input is a YouTube URL
 - Notes are the default output tab

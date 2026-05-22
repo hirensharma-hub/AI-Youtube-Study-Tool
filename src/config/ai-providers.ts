@@ -3,13 +3,15 @@ import { ProviderCatalogItem, ProviderId } from "@/types";
 export const providerCatalog: Record<ProviderId, ProviderCatalogItem> = {
   ollama: {
     id: "ollama",
-    label: "Ollama Cloud",
-    description: "Runs through Ollama's hosted cloud models, trying the strongest model first and automatically falling back if needed.",
-    defaultModel: "deepseek-v3.1:671b-cloud",
+    label: "Ollama",
+    description: "Works with a local Ollama server by default and can still be pointed at a hosted endpoint if you want one later.",
+    defaultModel: "llama3.2:3b",
     modelSuggestions: [
-      "deepseek-v3.1:671b-cloud",
-      "gpt-oss:120b-cloud",
-      "gpt-oss:20b-cloud"
+      "llama3.2:3b",
+      "qwen2.5:7b",
+      "mistral:7b",
+      "deepseek-r1:8b",
+      "gpt-oss:20b"
     ]
   }
 };

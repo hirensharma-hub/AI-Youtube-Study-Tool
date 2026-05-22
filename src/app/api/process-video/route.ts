@@ -15,6 +15,7 @@ import { extractYouTubeVideoId, fetchVideoTranscript } from "@/lib/youtube";
 
 const processSchema = z.object({
   videoUrl: z.string().trim().url(),
+  manualTranscript: z.string().trim().min(1).optional(),
   transcript: z
     .object({
       videoId: z.string().trim().min(11),
@@ -240,13 +241,6 @@ async function runProcessing(
   });
   const transcriptData = transcriptOverride ?? (await fetchVideoTranscript(videoUrl));
 
-  const cached = await getProcessedVideoByVideoId(transcriptData.videoId, {
-    minVersion: CURRENT_PROCESSING_VERSION
-  });
-  if (cached) {
-    return cached;
-  }
-
   onProgress?.({
     stage: "cleaning",
     detail: "Preparing transcript for cloud study mode",
@@ -349,6 +343,7 @@ async function runProcessing(
     cleanedTranscript,
     notes: verifiedNotes,
     quiz,
+    flashcards: [],
     processingVersion: CURRENT_PROCESSING_VERSION,
     transcriptLanguage: transcriptData.transcriptLanguage
   });
@@ -422,14 +417,13 @@ export async function POST(request: NextRequest) {
             rawTranscript: parsed.data.transcript.rawTranscript,
             transcriptLanguage: parsed.data.transcript.transcriptLanguage
           }
-        : undefined;
-    const cached = await getProcessedVideoByVideoId(videoId, {
-      minVersion: CURRENT_PROCESSING_VERSION
-    });
-    if (cached) {
-      return NextResponse.json({ video: cached, cached: true, done: true });
-    }
-
+        : parsed.data.manualTranscript
+          ? {
+              videoId,
+              rawTranscript: parsed.data.manualTranscript,
+              transcriptLanguage: "manual"
+            }
+          : undefined;
     if (shouldProcessInline()) {
       const video = await runProcessing(parsed.data.videoUrl, user.id, transcriptOverride);
       return NextResponse.json({ video, cached: false, done: true });
@@ -512,6 +506,8 @@ export async function POST(request: NextRequest) {
       return apiError(error instanceof Error ? error.message : "Unable to process this video.", 500);
     }
 
-    return apiError(error instanceof Error ? error.message : "Unable to process this video.", 500);
+    const message = error instanceof Error ? error.message : "Unable to process this video.";
+    const statusCode = message.includes("System busy, please try again in 15 minutes") ? 503 : 500;
+    return apiError(message, statusCode);
   }
 }

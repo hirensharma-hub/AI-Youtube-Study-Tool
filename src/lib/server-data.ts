@@ -2,9 +2,9 @@ import { ObjectId } from "mongodb";
 
 import { providerCatalog } from "@/config/ai-providers";
 import { getDatabase } from "@/lib/mongodb";
-import { ProcessedVideo, QuizQuestion, UserSettings, ViewerUser } from "@/types";
+import { Flashcard, ProcessedVideo, QuizQuestion, UserSettings, ViewerUser } from "@/types";
 
-export const CURRENT_PROCESSING_VERSION = 19;
+export const CURRENT_PROCESSING_VERSION = 20;
 
 const DEFAULT_SETTINGS: UserSettings = {
   theme: "system",
@@ -49,7 +49,7 @@ function normalizeModel(model?: string) {
     normalized.startsWith("mistralai") ||
     normalized.startsWith("Qwen")
   ) {
-    return DEFAULT_SETTINGS.model;
+    return normalized;
   }
 
   return normalized;
@@ -65,6 +65,7 @@ function toProcessedVideo(doc: Record<string, any>): ProcessedVideo {
     cleanedTranscript: String(doc.cleanedTranscript),
     notes: String(doc.notes),
     quiz: (doc.quiz ?? []) as QuizQuestion[],
+    flashcards: (doc.flashcards ?? []) as Flashcard[],
     processingVersion: Number(doc.processingVersion ?? 1),
     transcriptLanguage: doc.transcriptLanguage ? String(doc.transcriptLanguage) : undefined,
     createdAt: doc.createdAt.toISOString(),
@@ -181,6 +182,7 @@ export async function saveProcessedVideo(input: {
   cleanedTranscript: string;
   notes: string;
   quiz: QuizQuestion[];
+  flashcards?: Flashcard[];
   processingVersion?: number;
   transcriptLanguage?: string;
 }) {
@@ -197,6 +199,7 @@ export async function saveProcessedVideo(input: {
         cleanedTranscript: input.cleanedTranscript,
         notes: input.notes,
         quiz: input.quiz,
+        flashcards: input.flashcards ?? [],
         processingVersion: input.processingVersion ?? CURRENT_PROCESSING_VERSION,
         transcriptLanguage: input.transcriptLanguage,
         updatedAt: now
@@ -221,6 +224,23 @@ export async function updateProcessedVideoQuiz(videoId: string, quiz: QuizQuesti
     {
       $set: {
         quiz,
+        updatedAt: now
+      }
+    }
+  );
+
+  return getProcessedVideoByVideoId(videoId);
+}
+
+export async function updateProcessedVideoFlashcards(videoId: string, flashcards: Flashcard[]) {
+  const db = await getDatabase();
+  const now = new Date();
+
+  await db.collection("processedVideos").updateOne(
+    { videoId },
+    {
+      $set: {
+        flashcards,
         updatedAt: now
       }
     }

@@ -34,6 +34,12 @@ export interface MarkSchemePoint {
   acceptedAnswers: string[];
 }
 
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+}
+
 export interface QuizQuestion {
   id: string;
   type: "mcq" | "short-answer";
@@ -55,6 +61,7 @@ export interface ProcessedVideo {
   cleanedTranscript: string;
   notes: string;
   quiz: QuizQuestion[];
+  flashcards: Flashcard[];
   processingVersion: number;
   transcriptLanguage?: string;
   createdAt: string;
