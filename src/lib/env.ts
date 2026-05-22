@@ -54,6 +54,8 @@ export const env = {
   encryptionSecret: requireEnv("ENCRYPTION_SECRET"),
   transcriptBridgeUrl: optionalEnv("TRANSCRIPT_BRIDGE_URL") ?? "",
   transcriptBridgeToken: optionalEnv("TRANSCRIPT_BRIDGE_TOKEN") ?? "",
+  communityTranscriptApiUrl:
+    optionalEnv("COMMUNITY_TRANSCRIPT_API_URL") ?? "https://youtube-transcript-api-tau-one.vercel.app/transcript",
   tubeTextApiUrl: optionalEnv("TUBETEXT_API_URL") ?? "https://tubetext.vercel.app",
   aiApiUrl: optionalEnv("OLLAMA_API_URL") ?? "https://ollama.com/v1/chat/completions",
   aiToken: optionalEnv("OLLAMA_API_KEY") ?? optionalEnv("OLLAMA_API_TOKEN") ?? "",

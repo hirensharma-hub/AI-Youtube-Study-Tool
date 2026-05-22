@@ -2,6 +2,13 @@ import { YoutubeTranscript } from "youtube-transcript";
 
 import { env } from "@/lib/env";
 
+type TranscriptPayload = {
+  videoId: string;
+  rawTranscript: string;
+  transcriptLanguage?: string;
+  provider?: string;
+};
+
 type TranscriptEntry = {
   text: string;
   duration: number;
@@ -51,6 +58,37 @@ const PLAYER_CLIENTS: PlayerClient[] = [
     }
   }
 ];
+
+type TranscriptProvider = {
+  id: string;
+  fetch: (input: { videoId: string; videoUrl: string }) => Promise<TranscriptPayload>;
+};
+
+type TranscriptCacheEntry =
+  | {
+      ok: true;
+      expiresAt: number;
+      value: TranscriptPayload;
+    }
+  | {
+      ok: false;
+      expiresAt: number;
+      error: string;
+    };
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __studyTranscriptCache: Map<string, TranscriptCacheEntry> | undefined;
+}
+
+const transcriptCache = globalThis.__studyTranscriptCache ?? new Map<string, TranscriptCacheEntry>();
+
+if (!globalThis.__studyTranscriptCache) {
+  globalThis.__studyTranscriptCache = transcriptCache;
+}
+
+const SUCCESS_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const FAILURE_CACHE_TTL_MS = 1000 * 60 * 5;
 
 function safeDecode(value: string) {
   try {
@@ -288,8 +326,10 @@ async function fetchTranscriptFromCaptionTracks(videoId: string) {
       const entries = normalizeTranscriptEntries(parseCaptionXml(xml, lang));
       if (entries.length) {
         return {
+          videoId,
           transcriptLanguage: lang,
-          rawTranscript: entries.map((entry) => entry.text).join(" ")
+          rawTranscript: entries.map((entry) => entry.text).join(" "),
+          provider: "youtube-caption-tracks"
         };
       }
 
@@ -304,7 +344,7 @@ async function fetchTranscriptFromCaptionTracks(videoId: string) {
 
 async function fetchTranscriptFromExternalBridge(videoUrl: string) {
   if (!env.transcriptBridgeUrl) {
-    return null;
+    throw new Error("External transcript bridge is not configured.");
   }
 
   let response: Response;
@@ -351,7 +391,64 @@ async function fetchTranscriptFromExternalBridge(videoUrl: string) {
   return {
     videoId: payload.videoId,
     rawTranscript: payload.rawTranscript,
-    transcriptLanguage: payload.transcriptLanguage
+    transcriptLanguage: payload.transcriptLanguage,
+    provider: "external-bridge"
+  };
+}
+
+async function fetchTranscriptFromCommunityApi(videoUrl: string) {
+  const baseUrl = env.communityTranscriptApiUrl.trim().replace(/\/$/, "");
+  if (!baseUrl) {
+    throw new Error("Community transcript API is not configured.");
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        video_url: videoUrl
+      })
+    });
+  } catch {
+    throw new Error("Community transcript API could not be reached right now.");
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        transcript?: Array<{ text?: string; start?: number; duration?: number }>;
+        video_id?: string;
+        error?: string;
+        detail?: string;
+      }
+    | null;
+
+  if (!response.ok) {
+    const message =
+      payload?.error ||
+      payload?.detail ||
+      `Community transcript API returned HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+
+  const transcriptEntries = Array.isArray(payload?.transcript) ? payload.transcript : [];
+  const rawTranscript = transcriptEntries
+    .map((entry) => (typeof entry?.text === "string" ? entry.text.replace(/\s+/g, " ").trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+
+  if (!rawTranscript) {
+    throw new Error("Community transcript API returned an empty transcript.");
+  }
+
+  return {
+    videoId: payload?.video_id?.trim() || extractYouTubeVideoId(videoUrl),
+    rawTranscript,
+    provider: "community-transcript-api"
   };
 }
 
@@ -401,8 +498,59 @@ async function fetchTranscriptFromTubeText(videoId: string) {
   return {
     videoId: payload.data?.video_id?.trim() || videoId,
     rawTranscript,
-    transcriptLanguage: "unknown"
+    transcriptLanguage: "unknown",
+    provider: "tubetext"
   };
+}
+
+async function fetchTranscriptFromYoutubeTranscriptLib(videoId: string) {
+  const transcript = await Promise.race([
+    YoutubeTranscript.fetchTranscript(videoId),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Transcript fetching timed out for this video.")), 20000);
+    })
+  ]);
+
+  if (!transcript.length) {
+    throw new Error("The YouTube transcript library returned no transcript lines.");
+  }
+
+  return {
+    videoId,
+    transcriptLanguage: transcript[0]?.lang,
+    rawTranscript: transcript.map((entry) => entry.text.replace(/\s+/g, " ").trim()).join(" "),
+    provider: "youtube-transcript"
+  };
+}
+
+function getCachedTranscript(videoId: string) {
+  const entry = transcriptCache.get(videoId);
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    transcriptCache.delete(videoId);
+    return null;
+  }
+
+  return entry;
+}
+
+function cacheTranscriptSuccess(videoId: string, value: TranscriptPayload) {
+  transcriptCache.set(videoId, {
+    ok: true,
+    expiresAt: Date.now() + SUCCESS_CACHE_TTL_MS,
+    value
+  });
+}
+
+function cacheTranscriptFailure(videoId: string, error: string) {
+  transcriptCache.set(videoId, {
+    ok: false,
+    expiresAt: Date.now() + FAILURE_CACHE_TTL_MS,
+    error
+  });
 }
 
 export function extractYouTubeVideoId(input: string) {
@@ -447,56 +595,76 @@ export function extractYouTubeVideoId(input: string) {
 
 export async function fetchVideoTranscript(videoUrl: string) {
   const videoId = extractYouTubeVideoId(videoUrl);
-
-  try {
-    return await fetchTranscriptFromTubeText(videoId);
-  } catch {
-    // Fall back to the rest of the transcript pipeline if TubeText fails.
+  const cached = getCachedTranscript(videoId);
+  if (cached?.ok) {
+    return cached.value;
   }
+  if (cached && !cached.ok) {
+    throw new Error(cached.error);
+  }
+
+  const providerErrors: string[] = [];
+
+  const providers: TranscriptProvider[] = [
+    {
+      id: "community-transcript-api",
+      fetch: ({ videoUrl: nextVideoUrl }) => fetchTranscriptFromCommunityApi(nextVideoUrl)
+    },
+    {
+      id: "tubetext",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromTubeText(nextVideoId)
+    }
+  ];
 
   if (env.transcriptBridgeUrl) {
-    try {
-      const bridgeTranscript = await fetchTranscriptFromExternalBridge(videoUrl);
-      if (bridgeTranscript) {
-        return bridgeTranscript;
+    providers.push({
+      id: "external-bridge",
+      fetch: ({ videoUrl: nextVideoUrl }) => fetchTranscriptFromExternalBridge(nextVideoUrl)
+    });
+  }
+
+  providers.push(
+    {
+      id: "youtube-transcript",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromYoutubeTranscriptLib(nextVideoId)
+    },
+    {
+      id: "youtube-caption-tracks",
+      fetch: async ({ videoId: nextVideoId }) => {
+        const fallback = await fetchTranscriptFromCaptionTracks(nextVideoId);
+        if (!fallback.rawTranscript.trim()) {
+          throw new Error("No transcript was found for this video.");
+        }
+
+        return fallback;
       }
+    }
+  );
+
+  for (const provider of providers) {
+    try {
+      const transcript = await provider.fetch({ videoId, videoUrl });
+      if (!transcript.rawTranscript.trim()) {
+        throw new Error(`${provider.id} returned an empty transcript.`);
+      }
+
+      const normalized = {
+        ...transcript,
+        provider: transcript.provider ?? provider.id
+      };
+      cacheTranscriptSuccess(videoId, normalized);
+      return normalized;
     } catch (error) {
-      if (error instanceof Error && error.message.includes("System busy, please try again in 15 minutes")) {
+      const message = error instanceof Error ? error.message : `${provider.id} failed.`;
+      if (message.includes("System busy, please try again in 15 minutes")) {
+        cacheTranscriptFailure(videoId, message);
         throw error;
       }
-
-      // If the external bridge fails for a specific video/IP, continue with
-      // in-process fallback extractors instead of failing the whole request.
+      providerErrors.push(`${provider.id}: ${message}`);
     }
   }
 
-  try {
-    const transcript = await Promise.race([
-      YoutubeTranscript.fetchTranscript(videoId),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Transcript fetching timed out for this video.")), 20000);
-      })
-    ]);
-
-    if (transcript.length) {
-      return {
-        videoId,
-        transcriptLanguage: transcript[0]?.lang,
-        rawTranscript: transcript.map((entry) => entry.text.replace(/\s+/g, " ").trim()).join(" ")
-      };
-    }
-  } catch {
-    // Fall through to our more defensive caption-track fetcher below.
-  }
-
-  const fallback = await fetchTranscriptFromCaptionTracks(videoId);
-  if (!fallback.rawTranscript.trim()) {
-    throw new Error("No transcript was found for this video.");
-  }
-
-  return {
-    videoId,
-    transcriptLanguage: fallback.transcriptLanguage,
-    rawTranscript: fallback.rawTranscript
-  };
+  const message = `No transcript could be retrieved for this video. ${providerErrors.join(" | ")}`;
+  cacheTranscriptFailure(videoId, message);
+  throw new Error(message);
 }
