@@ -523,6 +523,23 @@ async function fetchTranscriptFromYoutubeTranscriptLib(videoId: string) {
   };
 }
 
+async function fetchTranscriptFromPlayzoneLib(videoId: string) {
+  const { YouTubeTranscriptApi: PlayzoneTranscriptApi } = await import("@playzone/youtube-transcript/dist/api/index.js");
+  const api = new PlayzoneTranscriptApi();
+  const transcript = await api.fetch(videoId);
+
+  if (!transcript?.snippets?.length) {
+    throw new Error("The Playzone transcript library returned no transcript lines.");
+  }
+
+  return {
+    videoId: transcript.videoId || videoId,
+    transcriptLanguage: transcript.languageCode || transcript.language,
+    rawTranscript: transcript.snippets.map((entry) => entry.text.replace(/\s+/g, " ").trim()).join(" "),
+    provider: "playzone-youtube-transcript"
+  };
+}
+
 function getCachedTranscript(videoId: string) {
   const entry = transcriptCache.get(videoId);
   if (!entry) {
@@ -624,6 +641,10 @@ export async function fetchVideoTranscript(videoUrl: string) {
   }
 
   providers.push(
+    {
+      id: "playzone-youtube-transcript",
+      fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromPlayzoneLib(nextVideoId)
+    },
     {
       id: "youtube-transcript",
       fetch: ({ videoId: nextVideoId }) => fetchTranscriptFromYoutubeTranscriptLib(nextVideoId)

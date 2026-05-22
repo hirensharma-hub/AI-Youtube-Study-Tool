@@ -11,6 +11,7 @@
     "install-transcript-bridge-macos": "node ./scripts/install-transcript-bridge-macos.mjs"
   },
   "dependencies": {
+    "@playzone/youtube-transcript": "^1.0.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.6.3",
     "mongodb": "^6.8.0",
