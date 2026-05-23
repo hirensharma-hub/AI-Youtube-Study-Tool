@@ -174,7 +174,7 @@ async function generateDetailedNotes(input: {
   for (let index = 0; index < chunks.length; index += 1) {
     input.onProgress?.(
       `Generating detailed notes (${index + 1}/${chunks.length})`,
-      38 + Math.round((index / Math.max(chchunks.length, 1)) * 18)
+      38 + Math.round((index / Math.max(chunks.length, 1)) * 18)
     );
 
     const sectionNotes = await generateChatCompletion({
