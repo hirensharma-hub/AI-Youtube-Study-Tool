@@ -2,15 +2,14 @@
 
 import { FormEvent, useMemo, useState } from "react";
 
-// NEW IMPORTS (required for browser transcript fetching)
+// Client-side transcript utilities
 import { extractVideoId } from "@/utils/extractVideoId";
 import { fetchTranscriptClient } from "@/utils/fetchTranscriptClient";
 
 type TranscriptSegment = {
   text: string;
   start: number;
-  duration: number;
-  lang?: string;
+  dur: number;
 };
 
 type TranscriptResponse = {
@@ -30,14 +29,18 @@ function formatTimestamp(totalSeconds: number) {
   const seconds = safeSeconds % 60;
 
   if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(
+      seconds
+    ).padStart(2, "0")}`;
   }
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function buildTimestampedTranscript(segments: TranscriptSegment[]) {
-  return segments.map((segment) => `[${formatTimestamp(segment.start)}] ${segment.text}`).join("\n");
+  return segments
+    .map((segment) => `[${formatTimestamp(segment.start)}] ${segment.text}`)
+    .join("\n");
 }
 
 function downloadText(filename: string, content: string) {
@@ -66,7 +69,7 @@ export function YoutubeTranscripter() {
       : transcript.text;
   }, [transcript, withTimestamps]);
 
-  // ⭐ UPDATED handleSubmit — now fetches transcript in the browser
+  // ⭐ Client-side transcript fetcher
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedUrl = videoUrl.trim();
@@ -85,7 +88,8 @@ export function YoutubeTranscripter() {
         return;
       }
 
-      const data = await fetchTranscriptClient(videoId);
+      // ⭐ FIXED: Pass full URL, not videoId
+      const data = await fetchTranscriptClient(trimmedUrl);
 
       if (!data) {
         setError("No transcript available for this video.");
@@ -119,12 +123,13 @@ export function YoutubeTranscripter() {
     <main className="transcripter-page">
       <div className="transcripter-orb transcripter-orb-one" />
       <div className="transcripter-orb transcripter-orb-two" />
+
       <section className="transcripter-shell">
         <div className="transcripter-hero">
           <p className="marketing-kicker">Free YouTube audio transcriber</p>
           <h1>Paste a video. Transcribe the audio. Keep moving.</h1>
           <p className="muted transcripter-lead">
-            This page now fetches transcripts directly from YouTube using your own IP address.
+            This page fetches transcripts directly from YouTube using your own IP address.
           </p>
         </div>
 
@@ -157,6 +162,7 @@ export function YoutubeTranscripter() {
               <p className="sidebar-eyebrow muted">Output</p>
               <h2>{transcript ? "Transcript ready" : "Your transcript will appear here"}</h2>
             </div>
+
             <div className="transcripter-actions">
               <label className="transcripter-toggle">
                 <input
@@ -166,10 +172,22 @@ export function YoutubeTranscripter() {
                 />
                 Timestamps
               </label>
-              <button className="button button-secondary" type="button" onClick={handleCopy} disabled={!outputText}>
+
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={handleCopy}
+                disabled={!outputText}
+              >
                 {copied ? "Copied" : "Copy"}
               </button>
-              <button className="button button-secondary" type="button" onClick={handleDownload} disabled={!outputText}>
+
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={handleDownload}
+                disabled={!outputText}
+              >
                 Download
               </button>
             </div>
@@ -180,7 +198,7 @@ export function YoutubeTranscripter() {
               <span>Video ID: {transcript.videoId}</span>
               <span>Language: {transcript.language}</span>
               <span>Provider: {transcript.provider}</span>
-              <span>{transcript.segmentCount.toLocaleString()} timestamp segments</span>
+              <span>{transcript.segmentCount.toLocaleString()} segments</span>
               <span>{transcript.characterCount.toLocaleString()} chars</span>
             </div>
           ) : null}
@@ -196,15 +214,19 @@ export function YoutubeTranscripter() {
         <section className="transcripter-notes">
           <article className="panel">
             <strong>No YouTube captions required</strong>
-            <p className="muted">This tool now fetches transcripts directly from YouTube’s timedtext API.</p>
+            <p className="muted">
+              This tool fetches transcripts directly from YouTube’s timedtext API.
+            </p>
           </article>
+
           <article className="panel">
             <strong>Realistic limits</strong>
             <p className="muted">Some videos may not have captions available.</p>
           </article>
+
           <article className="panel">
             <strong>Export friendly</strong>
-            <p className="muted">Copy clean text, keep timestamps, or download a plain `.txt` file.</p>
+            <p className="muted">Copy clean text or download a plain `.txt` file.</p>
           </article>
         </section>
       </section>
