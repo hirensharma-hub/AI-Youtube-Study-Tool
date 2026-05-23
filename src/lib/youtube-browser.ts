@@ -14,7 +14,7 @@ export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<B
 
   // We use a CORS proxy to prevent the browser from blocking the request
   const proxy = "";
-  const apiUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
+  const apiUrl = `https://pipedapi.moomoo.me/streams/${videoId}`;
 
   try {
     const response = await fetch(apiUrl);
