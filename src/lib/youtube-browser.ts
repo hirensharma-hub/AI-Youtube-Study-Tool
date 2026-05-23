@@ -13,7 +13,7 @@ export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<B
   if (!videoId) throw new Error("Invalid Video ID");
 
   // We use a CORS proxy to prevent the browser from blocking the request
-  const proxy = "https://api.allorigins.win/raw?url=";
+  const proxy = "";
   const apiUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
 
   try {
