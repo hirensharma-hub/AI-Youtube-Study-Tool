@@ -419,7 +419,20 @@ export function LearningWorkspace({
 
     try {
       // 1. Always fetch transcript in the browser
-      const browserTranscript = await fetchVideoTranscriptInBrowser(trimmedUrl);
+      const transcriptRes = await fetch("/api/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl: trimmedUrl }),
+      });
+
+      const transcriptData = await transcriptRes.json();
+
+      if (!transcriptRes.ok) {
+        throw new Error(transcriptData.error || "Transcript fetch failed");
+      }
+
+      const transcript = transcriptData.transcript;
+
 
       if (!browserTranscript || !browserTranscript.rawTranscript) {
         setProcessing(false);
