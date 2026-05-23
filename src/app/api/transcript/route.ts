@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.syncpundit.io",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.moomoo.me",
+  "https://pipedapi.palveluntarjoaja.eu"
+];
+
 export async function POST(req: NextRequest) {
   try {
     const { videoUrl } = await req.json();
@@ -19,22 +27,31 @@ export async function POST(req: NextRequest) {
 
     const videoId = match[1];
 
-    // Fetch stream info from Piped
-    const pipedUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
-    const res = await fetch(pipedUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
+    let subtitles: any[] | null = null;
+    let workingInstance: string | null = null;
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: "Transcript unavailable for this video." },
-        { status: 500 }
-      );
+    // Try multiple Piped servers
+    for (const instance of PIPED_INSTANCES) {
+      try {
+        const res = await fetch(`${instance}/streams/${videoId}`, {
+          headers: { "User-Agent": "Mozilla/5.0" }
+        });
+
+        if (!res.ok) continue;
+
+        const data = await res.json();
+
+        if (data.subtitles && data.subtitles.length > 0) {
+          subtitles = data.subtitles;
+          workingInstance = instance;
+          break;
+        }
+      } catch {
+        continue;
+      }
     }
 
-    const data = await res.json();
-
-    if (!data.subtitles || data.subtitles.length === 0) {
+    if (!subtitles) {
       return NextResponse.json(
         { error: "No subtitles found for this video." },
         { status: 404 }
@@ -43,8 +60,8 @@ export async function POST(req: NextRequest) {
 
     // Prefer English, otherwise first available
     const track =
-      data.subtitles.find((s: any) => s.language === "English") ||
-      data.subtitles[0];
+      subtitles.find((s: any) => s.language === "English") ||
+      subtitles[0];
 
     // Fetch subtitle file
     const subtitleRes = await fetch(track.url);
@@ -53,7 +70,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       videoId,
       transcript: subtitleText,
-      language: track.language
+      language: track.language,
+      source: workingInstance
     });
   } catch (err) {
     return NextResponse.json(
