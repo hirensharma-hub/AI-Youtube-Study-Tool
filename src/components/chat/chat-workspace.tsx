@@ -407,6 +407,7 @@ export function LearningWorkspace({
   }, [activeVideo, quizRevealed, quizSelections]);
 
   async function handleProcessVideo(event: FormEvent<HTMLFormElement>) {
+    console.log("HANDLE PROCESS VIDEO IS RUNNING");
     event.preventDefault();
 
     const trimmedUrl = videoUrlInput.trim();
