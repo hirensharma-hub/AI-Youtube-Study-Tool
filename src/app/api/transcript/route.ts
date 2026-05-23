@@ -9,26 +9,34 @@ const transcriptRequestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // Require user authentication (your existing logic)
   const { user, response } = await requireApiUser();
   if (!user) {
     return response;
   }
 
+  // Parse JSON body
   let body: unknown;
-
   try {
     body = await parseJsonBody(request);
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "The request payload was invalid.", 400);
+    return apiError(
+      error instanceof Error ? error.message : "The request payload was invalid.",
+      400
+    );
   }
 
+  // Validate input
   const parsed = transcriptRequestSchema.safeParse(body);
   if (!parsed.success) {
     return apiError("A valid YouTube URL is required.");
   }
 
   try {
+    // Extract ID
     const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
+
+    // Fetch transcript (server-side, no CORS issues)
     const transcript = await fetchVideoTranscript(parsed.data.videoUrl);
 
     return NextResponse.json({
@@ -37,6 +45,9 @@ export async function POST(request: NextRequest) {
       transcript
     });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Unable to fetch a transcript for this video.", 500);
+    return apiError(
+      error instanceof Error ? error.message : "Unable to fetch a transcript for this video.",
+      500
+    );
   }
 }
