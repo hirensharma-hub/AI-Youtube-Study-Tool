@@ -12,7 +12,6 @@ import {
 } from "react";
 
 import { providerCatalog } from "@/config/ai-providers";
-import { fetchVideoTranscriptInBrowser } from "@/lib/youtube-browser";
 import {
   ProcessedVideo,
   ProviderCatalogItem,
@@ -452,6 +451,7 @@ export function LearningWorkspace({
 
 
       // 2. Send transcript to backend
+      // 2. Send transcript to backend
       const data = await getJson<{ video: ProcessedVideo }>(
         "/api/process-video",
         {
@@ -462,13 +462,14 @@ export function LearningWorkspace({
           body: JSON.stringify({
             videoUrl: trimmedUrl,
             transcript: {
-              videoId: browserTranscript.videoId,
-              rawTranscript: browserTranscript.rawTranscript,
-              transcriptLanguage: browserTranscript.transcriptLanguage
+              videoId: transcriptData.videoId,
+              rawTranscript: transcript,
+              transcriptLanguage: transcriptData.language
             }
           })
         }
       );
+
 
       const processed = data.video;
 
