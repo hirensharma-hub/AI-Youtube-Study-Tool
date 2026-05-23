@@ -787,7 +787,8 @@ export function LearningWorkspace({
         {
           id: crypto.randomUUID(),
           role: "user",
-          content: trimmed
+          content: trimmed,
+          createdAt: new Date().toISOString()
         }
       ]
     }));
