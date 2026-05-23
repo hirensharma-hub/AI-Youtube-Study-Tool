@@ -39,7 +39,6 @@ export async function POST(req: Request) {
         });
 
         if (!res.ok) {
-          // log for debugging
           console.log(`Piped instance ${instance} returned status ${res.status}`);
           continue;
         }
@@ -59,7 +58,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Timedtext fallback: try YouTube's timedtext if Piped instances returned nothing
+    // Timedtext fallback
     if (!subtitles) {
       try {
         console.log("Attempting YouTube timedtext fallback for", videoId);
@@ -72,13 +71,11 @@ export async function POST(req: Request) {
           const ttText = await ttRes.text();
           if (ttText && ttText.includes('<text')) {
             const items: any[] = [];
-            // match <text start="..." dur="...">content</text>
             const re = /<text\s+start="([^"]+)"(?:\s+dur="([^"]+)")?[^>]*>([\s\S]*?)<\/text>/g;
             let m;
             while ((m = re.exec(ttText)) !== null) {
               const start = parseFloat(m[1]) || 0;
               const dur = m[2] ? parseFloat(m[2]) : 0;
-              // timedtext encodes some entities; replace common ones and decode pluses
               let text = m[3] || "";
               text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
               text = text.replace(/\+/g, ' ');
@@ -101,6 +98,37 @@ export async function POST(req: Request) {
         console.log("Timedtext fallback error:", String(e));
       }
     }
+
+    // -------------------- Local script fallback (server runtime only) --------------------
+    if (!subtitles) {
+      try {
+        const { execFile } = await import("child_process");
+        const { promisify } = await import("util");
+        const execFileP = promisify(execFile);
+
+        const { stdout } = await execFileP("node", ["./scripts/fetchTranscript.js", videoId], {
+          timeout: 20000
+        });
+
+        let parsed = {};
+        try {
+          parsed = JSON.parse(stdout || "{}");
+        } catch (parseErr) {
+          console.log("Local script JSON parse error:", String(parseErr));
+        }
+
+        if (parsed && Array.isArray(parsed.subtitles) && parsed.subtitles.length > 0) {
+          subtitles = parsed.subtitles;
+          workingInstance = parsed.source || "local-script";
+          console.log("Found subtitles via local script fallback:", workingInstance);
+        } else {
+          console.log("Local script returned no subtitles");
+        }
+      } catch (e) {
+        console.log("Local script fallback failed:", String(e));
+      }
+    }
+    // ------------------------------------------------------------------------------------
 
     if (!subtitles) {
       return NextResponse.json(
