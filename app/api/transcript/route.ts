@@ -1,6 +1,6 @@
-export const runtime = "nodejs";
+export const runtime = "edge";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 const PIPED_INSTANCES = [
   "https://pipedapi.kavin.rocks",
@@ -10,7 +10,7 @@ const PIPED_INSTANCES = [
   "https://pipedapi.palveluntarjoaja.eu"
 ];
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const { videoUrl } = await req.json();
 
