@@ -434,7 +434,7 @@ export function LearningWorkspace({
       const transcript = transcriptData.transcript;
 
 
-      if (!browserTranscript || !browserTranscript.rawTranscript) {
+      if (!transcript) {
         setProcessing(false);
         setError(
           "Transcript unavailable for this video.\n\n" +
@@ -449,6 +449,7 @@ export function LearningWorkspace({
         );
         return;
       }
+
 
       // 2. Send transcript to backend
       const data = await getJson<{ video: ProcessedVideo }>(
