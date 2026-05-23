@@ -17,8 +17,8 @@ export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<B
   const apiUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
 
   try {
-    const response = await fetch(proxy + encodeURIComponent(apiUrl));
-    if (!response.ok) throw new Error("Proxy fetch failed");
+    const response = await fetch(apiUrl);
+    if (!response.ok) throw new Error("Transcript fetch failed");
 
     const data = await response.json();
     const subtitles = data.subtitles || [];
@@ -28,7 +28,7 @@ export async function fetchVideoTranscriptInBrowser(videoUrl: string): Promise<B
     if (!targetSub) throw new Error("No subtitles found");
 
     // Fetch the actual text via proxy
-    const vttRes = await fetch(proxy + encodeURIComponent(targetSub.url));
+    const vttRes = await fetch(targetSub.url);
     const vttText = await vttRes.text();
 
     // Clean the VTT format to plain text
