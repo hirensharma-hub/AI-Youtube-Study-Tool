@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  FormEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 
 import { providerCatalog } from "@/config/ai-providers";
 import { fetchVideoTranscriptInBrowser } from "@/lib/youtube-browser";
@@ -32,33 +40,6 @@ type ProcessingState = {
   progress: number;
 };
 
-type BrowserTranscript = {
-  videoId: string;
-  rawTranscript: string;
-  transcriptLanguage?: string;
-};
-
-function isTranscriptAccessError(message: string) {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("no transcript could be retrieved") ||
-    normalized.includes("login_required") ||
-    normalized.includes("login required") ||
-    normalized.includes("caption") ||
-    normalized.includes("transcript is disabled") ||
-    normalized.includes("could not read player response") ||
-    normalized.includes("system busy") ||
-    normalized.includes("too many requests")
-  );
-}
-
-const fallbackSettings: UserSettings = {
-  theme: "system",
-  model: providerCatalog.ollama.defaultModel,
-  temperature: 0.4,
-  maxTokens: 1200
-};
-
 function applyTheme(theme: UserSettings["theme"]) {
   if (theme === "system") {
     delete document.documentElement.dataset.theme;
@@ -76,9 +57,7 @@ function getVideoStub(videoUrl: string) {
 
 function renderInlineText(text: string, keyPrefix: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
-    if (!part) {
-      return null;
-    }
+    if (!part) return null;
 
     const boldMatch = part.match(/^\*\*([\s\S]+)\*\*$/);
     if (boldMatch) {
@@ -137,7 +116,10 @@ function renderRichStudyText(text: string): ReactNode[] {
       const level = Math.min(headingMatch[1].length + 1, 6);
       const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
       blocks.push(
-        <HeadingTag key={`heading-${index}`} className={`learning-heading learning-heading-${level}`}>
+        <HeadingTag
+          key={`heading-${index}`}
+          className={`learning-heading learning-heading-${level}`}
+        >
           {renderInlineText(headingMatch[2].trim(), `heading-${index}`)}
         </HeadingTag>
       );
@@ -148,7 +130,10 @@ function renderRichStudyText(text: string): ReactNode[] {
     if (/^\*\*.+\*\*$/.test(line) && !line.includes(":")) {
       const title = line.replace(/^\*\*|\*\*$/g, "").trim();
       blocks.push(
-        <h2 key={`title-${index}`} className="learning-heading learning-heading-feature">
+        <h2
+          key={`title-${index}`}
+          className="learning-heading learning-heading-feature"
+        >
           {title}
         </h2>
       );
@@ -177,7 +162,9 @@ function renderRichStudyText(text: string): ReactNode[] {
               <thead>
                 <tr>
                   {header.map((cell, cellIndex) => (
-                    <th key={`table-head-${cellIndex}`}>{renderInlineText(cell, `table-head-${cellIndex}`)}</th>
+                    <th key={`table-head-${cellIndex}`}>
+                      {renderInlineText(cell, `table-head-${cellIndex}`)}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -187,7 +174,10 @@ function renderRichStudyText(text: string): ReactNode[] {
                     <tr key={`table-row-${rowIndex}`}>
                       {row.map((cell, cellIndex) => (
                         <td key={`table-cell-${rowIndex}-${cellIndex}`}>
-                          {renderInlineText(cell, `table-cell-${rowIndex}-${cellIndex}`)}
+                          {renderInlineText(
+                            cell,
+                            `table-cell-${rowIndex}-${cellIndex}`
+                          )}
                         </td>
                       ))}
                     </tr>
@@ -213,7 +203,9 @@ function renderRichStudyText(text: string): ReactNode[] {
       blocks.push(
         <ul key={`list-${index}`} className="learning-list">
           {items.map((item, itemIndex) => (
-            <li key={`list-item-${itemIndex}`}>{renderInlineText(item, `list-item-${itemIndex}`)}</li>
+            <li key={`list-item-${itemIndex}`}>
+              {renderInlineText(item, `list-item-${itemIndex}`)}
+            </li>
           ))}
         </ul>
       );
@@ -229,7 +221,10 @@ function renderRichStudyText(text: string): ReactNode[] {
       }
 
       blocks.push(
-        <ol key={`ordered-list-${index}`} className="learning-list learning-list-ordered">
+        <ol
+          key={`ordered-list-${index}`}
+          className="learning-list learning-list-ordered"
+        >
           {items.map((item, itemIndex) => (
             <li key={`ordered-list-item-${itemIndex}`}>
               {renderInlineText(item, `ordered-list-item-${itemIndex}`)}
@@ -245,9 +240,7 @@ function renderRichStudyText(text: string): ReactNode[] {
 
     while (index < lines.length) {
       const nextLine = lines[index].trim();
-      if (!nextLine || isSpecialBlockStart(nextLine)) {
-        break;
-      }
+      if (!nextLine || isSpecialBlockStart(nextLine)) break;
 
       paragraphLines.push(nextLine);
       index += 1;
@@ -255,7 +248,10 @@ function renderRichStudyText(text: string): ReactNode[] {
 
     blocks.push(
       <p key={`paragraph-${index}`} className="learning-paragraph">
-        {renderInlineText(paragraphLines.join(" "), `paragraph-${index}`)}
+        {renderInlineText(
+          paragraphLines.join(" "),
+          `paragraph-${index}`
+        )}
       </p>
     );
   }
@@ -266,13 +262,17 @@ function renderRichStudyText(text: string): ReactNode[] {
 async function getJson<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Request failed." }));
+    const payload = await response.json().catch(() => ({
+      error: "Request failed."
+    }));
     throw new Error(payload.error || "Request failed.");
   }
 
   const text = await response.text();
   if (!text.trim()) {
-    throw new Error("The server returned an empty response. Please try again.");
+    throw new Error(
+      "The server returned an empty response. Please try again."
+    );
   }
 
   try {
@@ -282,416 +282,275 @@ async function getJson<T>(input: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export function LearningWorkspace({ initialUser, initialSettings }: LearningWorkspaceProps) {
+export function LearningWorkspace({
+  initialUser,
+  initialSettings
+}: LearningWorkspaceProps) {
   const router = useRouter();
   const qaEndRef = useRef<HTMLDivElement | null>(null);
+
   const [user] = useState(initialUser);
   const [provider] = useState<ProviderCatalogItem>(providerCatalog.ollama);
-  const [settings, setSettings] = useState<UserSettings>(initialSettings ?? fallbackSettings);
-  const [settingsDraft, setSettingsDraft] = useState<UserSettings>(initialSettings ?? fallbackSettings);
+  const [settings, setSettings] = useState<UserSettings>(
+    initialSettings
+  );
+  const [settingsDraft, setSettingsDraft] = useState<UserSettings>(
+    initialSettings
+  );
+
   const [videoUrlInput, setVideoUrlInput] = useState("");
-  const [activeVideo, setActiveVideo] = useState<ProcessedVideo | null>(null);
-  const [videoCache, setVideoCache] = useState<Record<string, ProcessedVideo>>({});
-  const [qaCache, setQaCache] = useState<Record<string, QuestionAnswerMessage[]>>({});
-  const [quizSelections, setQuizSelections] = useState<QuizSelectionsByVideo>({});
-  const [quizRevealed, setQuizRevealed] = useState<QuizRevealByVideo>({});
-  const [quizProgress, setQuizProgress] = useState<QuizProgressByVideo>({});
-  const [quizShortAnswers, setQuizShortAnswers] = useState<QuizShortAnswersByVideo>({});
-  const [quizGrades, setQuizGrades] = useState<QuizGradesByVideo>({});
+  const [activeVideo, setActiveVideo] = useState<ProcessedVideo | null>(
+    null
+  );
+  const [videoCache, setVideoCache] = useState<
+    Record<string, ProcessedVideo>
+  >({});
+  const [qaCache, setQaCache] = useState<
+    Record<string, QuestionAnswerMessage[]>
+  >({});
+  const [quizSelections, setQuizSelections] =
+    useState<QuizSelectionsByVideo>({});
+  const [quizRevealed, setQuizRevealed] =
+    useState<QuizRevealByVideo>({});
+  const [quizProgress, setQuizProgress] =
+    useState<QuizProgressByVideo>({});
+  const [quizShortAnswers, setQuizShortAnswers] =
+    useState<QuizShortAnswersByVideo>({});
+  const [quizGrades, setQuizGrades] =
+    useState<QuizGradesByVideo>({});
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("notes");
   const [questionDraft, setQuestionDraft] = useState("");
+
   const [processing, setProcessing] = useState(false);
-  const [processingState, setProcessingState] = useState<ProcessingState | null>(null);
+  const [processingState, setProcessingState] =
+    useState<ProcessingState | null>(null);
+
   const [asking, setAsking] = useState(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
-  const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
+  const [generatingFlashcards, setGeneratingFlashcards] =
+    useState(false);
   const [gradingQuiz, setGradingQuiz] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [error, setError] = useState("");
-  const [manualTranscript, setManualTranscript] = useState("");
-  const [showManualTranscriptFallback, setShowManualTranscriptFallback] = useState(false);
-
-  const qaMessages = useMemo(() => {
-    if (!activeVideo) {
-      return [];
-    }
-
-    return qaCache[activeVideo.videoId] ?? [];
-  }, [activeVideo, qaCache]);
-
-  const activeQuizIndex = activeVideo ? Math.min(quizProgress[activeVideo.videoId] ?? 0, Math.max(activeVideo.quiz.length - 1, 0)) : 0;
-  const activeQuizQuestion = activeVideo ? activeVideo.quiz[activeQuizIndex] : null;
-  const activeQuizSelection =
-    activeVideo && activeQuizQuestion
-      ? quizSelections[activeVideo.videoId]?.[activeQuizQuestion.id] ?? ""
-      : "";
-  const activeQuizShortAnswer =
-    activeVideo && activeQuizQuestion
-      ? quizShortAnswers[activeVideo.videoId]?.[activeQuizQuestion.id] ?? ""
-      : "";
-  const activeQuizIsRevealed =
-    activeVideo && activeQuizQuestion
-      ? Boolean(quizRevealed[activeVideo.videoId]?.[activeQuizQuestion.id])
-      : false;
-  const activeQuizGrade =
-    activeVideo && activeQuizQuestion
-      ? quizGrades[activeVideo.videoId]?.[activeQuizQuestion.id]
-      : undefined;
-  const answeredQuizCount = activeVideo ? Object.keys(quizRevealed[activeVideo.videoId] ?? {}).length : 0;
-  const quizCorrectCount = activeVideo
-    ? activeVideo.quiz.filter((question) => {
-        const selection = quizSelections[activeVideo.videoId]?.[question.id];
-        return selection && selection === question.correctOptionId;
-      }).length
-    : 0;
 
   useEffect(() => {
     applyTheme(settings.theme);
   }, [settings.theme]);
 
   useEffect(() => {
-    qaEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [qaMessages, asking]);
+    qaEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end"
+    });
+  }, [qaCache, asking]);
+  const qaMessages = useMemo(
+    () => (activeVideo ? qaCache[activeVideo.videoId] ?? [] : []),
+    [activeVideo, qaCache]
+  );
+
+  const activeQuizIndex = useMemo(() => {
+    if (!activeVideo) return 0;
+    return quizProgress[activeVideo.videoId] ?? 0;
+  }, [activeVideo, quizProgress]);
+
+  const activeQuizQuestion = useMemo(() => {
+    if (!activeVideo) return null;
+    return activeVideo.quiz[activeQuizIndex] ?? null;
+  }, [activeVideo, activeQuizIndex]);
+
+  const activeQuizSelection = useMemo(() => {
+    if (!activeVideo || !activeQuizQuestion) return "";
+    return quizSelections[activeVideo.videoId]?.[activeQuizQuestion.id] ?? "";
+  }, [activeVideo, activeQuizQuestion, quizSelections]);
+
+  const activeQuizIsRevealed = useMemo(() => {
+    if (!activeVideo || !activeQuizQuestion) return false;
+    return quizRevealed[activeVideo.videoId]?.[activeQuizQuestion.id] ?? false;
+  }, [activeVideo, activeQuizQuestion, quizRevealed]);
+
+  const activeQuizShortAnswer = useMemo(() => {
+    if (!activeVideo || !activeQuizQuestion) return "";
+    return (
+      quizShortAnswers[activeVideo.videoId]?.[activeQuizQuestion.id] ?? ""
+    );
+  }, [activeVideo, activeQuizQuestion, quizShortAnswers]);
+
+  const activeQuizGrade = useMemo(() => {
+    if (!activeVideo || !activeQuizQuestion) return null;
+    return (
+      quizGrades[activeVideo.videoId]?.[activeQuizQuestion.id] ?? null
+    );
+  }, [activeVideo, activeQuizQuestion, quizGrades]);
+
+  const answeredQuizCount = useMemo(() => {
+    if (!activeVideo) return 0;
+    return Object.keys(quizRevealed[activeVideo.videoId] ?? {}).length;
+  }, [activeVideo, quizRevealed]);
+
+  const quizCorrectCount = useMemo(() => {
+    if (!activeVideo) return 0;
+    const revealed = quizRevealed[activeVideo.videoId] ?? {};
+    const selections = quizSelections[activeVideo.videoId] ?? {};
+
+    return activeVideo.quiz.reduce((count, question) => {
+      if (!revealed[question.id]) return count;
+      if (question.type === "mcq") {
+        if (selections[question.id] === question.correctOptionId) {
+          return count + 1;
+        }
+      }
+      return count;
+    }, 0);
+  }, [activeVideo, quizRevealed, quizSelections]);
+
+  async function handleProcessVideo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedUrl = videoUrlInput.trim();
+    if (!trimmedUrl) return;
+
+    setError("");
+    setProcessing(true);
+    setProcessingState(null);
+
+    try {
+      // 1. Always fetch transcript in the browser
+      const browserTranscript = await fetchVideoTranscriptInBrowser(trimmedUrl);
+
+      if (!browserTranscript || !browserTranscript.rawTranscript) {
+        setProcessing(false);
+        setError(
+          "Transcript unavailable for this video.\n\n" +
+            "LessonLift couldn’t access the captions for this YouTube link.\n\n" +
+            "This usually happens when:\n" +
+            "• The video has no subtitles or closed captions\n" +
+            "• The creator disabled transcript access\n" +
+            "• The video is age‑restricted or region‑locked\n" +
+            "• YouTube temporarily blocked transcript requests\n\n" +
+            "Try another video with captions enabled.\n\n" +
+            "(Technical note: LessonLift requires a transcript to generate notes, quizzes, and answers.)"
+        );
+        return;
+      }
+
+      // 2. Send transcript to backend
+      const data = await getJson<{ video: ProcessedVideo }>(
+        "/api/process-video",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            videoUrl: trimmedUrl,
+            transcript: {
+              videoId: browserTranscript.videoId,
+              rawTranscript: browserTranscript.rawTranscript,
+              transcriptLanguage: browserTranscript.transcriptLanguage
+            }
+          })
+        }
+      );
+
+      const processed = data.video;
+
+      setActiveVideo(processed);
+      setVideoCache((current) => ({
+        ...current,
+        [processed.videoId]: processed
+      }));
+
+      setQuizProgress((current) => ({
+        ...current,
+        [processed.videoId]: 0
+      }));
+      setQuizSelections((current) => ({
+        ...current,
+        [processed.videoId]: {}
+      }));
+      setQuizRevealed((current) => ({
+        ...current,
+        [processed.videoId]: {}
+      }));
+      setQuizShortAnswers((current) => ({
+        ...current,
+        [processed.videoId]: {}
+      }));
+      setQuizGrades((current) => ({
+        ...current,
+        [processed.videoId]: {}
+      }));
+
+      setActiveTab("notes");
+    } catch (processError) {
+      setError(
+        processError instanceof Error
+          ? processError.message
+          : "Unable to process this video."
+      );
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   async function handleSaveSettings() {
     setSavingSettings(true);
     setError("");
 
     try {
-      const data = await getJson<{ settings: UserSettings }>("/api/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(settingsDraft)
-      });
+      const data = await getJson<{ settings: UserSettings }>(
+        "/api/save-settings",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(settingsDraft)
+        }
+      );
 
       setSettings(data.settings);
-      setSettingsDraft(data.settings);
-      applyTheme(data.settings.theme);
       setSettingsOpen(false);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save your settings.");
+    } catch (settingsError) {
+      setError(
+        settingsError instanceof Error
+          ? settingsError.message
+          : "Unable to save settings."
+      );
     } finally {
       setSavingSettings(false);
     }
   }
 
-  async function handleThemeToggle() {
-    const sequence: UserSettings["theme"][] = ["system", "light", "dark"];
-    const currentIndex = sequence.indexOf(settings.theme);
-    const nextTheme = sequence[(currentIndex + 1) % sequence.length];
-
-    setSettings((current) => ({ ...current, theme: nextTheme }));
-    setSettingsDraft((current) => ({ ...current, theme: nextTheme }));
-    applyTheme(nextTheme);
-
-    try {
-      await getJson("/api/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ theme: nextTheme })
-      });
-    } catch {
-      return;
-    }
-  }
-
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  }
-
-  async function handleProcessVideo(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedUrl = videoUrlInput.trim();
-    if (!trimmedUrl || processing) {
-      return;
-    }
-
-    setProcessing(true);
-    setShowManualTranscriptFallback(false);
-    setProcessingState({
-      taskId: "",
-      stage: "queued",
-      detail: "Preparing the cloud AI pipeline",
-      progress: 2
-    });
-    setError("");
-
     try {
-      let browserTranscript: BrowserTranscript | null = null;
-
-      setProcessingState({
-        taskId: "",
-        stage: "transcript",
-        detail: "Trying local or browser transcript access",
-        progress: 6
-      });
-
-      try {
-        browserTranscript = await fetchVideoTranscriptInBrowser(trimmedUrl);
-        setProcessingState({
-          taskId: "",
-          stage: "transcript",
-          detail: "Transcript retrieved on this device",
-          progress: 10
-        });
-      } catch {
-        setProcessingState({
-          taskId: "",
-          stage: "transcript",
-          detail: "Local transcript access unavailable, falling back to server access",
-          progress: 8
-        });
-      }
-
-      const data = await getJson<{ video?: ProcessedVideo; taskId?: string; done?: boolean }>("/api/process-video", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          videoUrl: trimmedUrl,
-          ...(browserTranscript ? { transcript: browserTranscript } : {})
-        })
-      });
-
-      if (data.done && data.video) {
-        const immediateVideo = data.video;
-
-        setActiveVideo(immediateVideo);
-        setVideoCache((current) => ({
-          ...current,
-          [immediateVideo.videoId]: immediateVideo
-        }));
-        setQaCache((current) => ({
-          ...current,
-          [immediateVideo.videoId]: current[immediateVideo.videoId] ?? []
-        }));
-        setQuizSelections((current) => ({
-          ...current,
-          [immediateVideo.videoId]: current[immediateVideo.videoId] ?? {}
-        }));
-        setQuizRevealed((current) => ({
-          ...current,
-          [immediateVideo.videoId]: current[immediateVideo.videoId] ?? {}
-        }));
-        setQuizProgress((current) => ({
-          ...current,
-          [immediateVideo.videoId]: 0
-        }));
-        setQuizShortAnswers((current) => ({
-          ...current,
-          [immediateVideo.videoId]: current[immediateVideo.videoId] ?? {}
-        }));
-        setQuizGrades((current) => ({
-          ...current,
-          [immediateVideo.videoId]: current[immediateVideo.videoId] ?? {}
-        }));
-        setActiveTab("notes");
-        setProcessingState(null);
-        return;
-      }
-
-      if (!data.taskId) {
-        throw new Error("The server did not return a processing task.");
-      }
-
-      setProcessingState({
-        taskId: data.taskId,
-        stage: "queued",
-        detail: "Preparing the cloud AI pipeline",
-        progress: 2
-      });
-
-      let completedVideo: ProcessedVideo | null = null;
-
-      const startedAt = Date.now();
-      let missingTaskCount = 0;
-
-      while (!completedVideo) {
-        await new Promise((resolve) => setTimeout(resolve, 4000));
-        let status:
-          | {
-              status: "running" | "completed" | "failed";
-              stage: string;
-              detail: string;
-              progress: number;
-              error?: string;
-              video?: ProcessedVideo;
-            }
-          | null = null;
-
-        try {
-          status = await getJson<{
-            status: "running" | "completed" | "failed";
-            stage: string;
-            detail: string;
-            progress: number;
-            error?: string;
-            video?: ProcessedVideo;
-          }>(`/api/process-video?taskId=${data.taskId}`);
-          missingTaskCount = 0;
-        } catch (pollError) {
-          const message = pollError instanceof Error ? pollError.message : "";
-          if (message.includes("could not be found") && missingTaskCount < 2) {
-            missingTaskCount += 1;
-            continue;
-          }
-
-          throw pollError;
-        }
-
-        if (!status) {
-          continue;
-        }
-
-        setProcessingState({
-          taskId: data.taskId,
-          stage: status.stage,
-          detail: status.detail,
-          progress: status.progress
-        });
-
-        if (status.status === "failed") {
-          throw new Error(status.error || "Unable to process that video.");
-        }
-
-        if (status.status === "completed" && status.video) {
-          completedVideo = status.video;
-        }
-
-        if (Date.now() - startedAt > 15 * 60 * 1000) {
-          throw new Error("Cloud processing is taking too long. Try a shorter video or switch to a lighter Ollama Cloud model.");
-        }
-      }
-
-      setActiveVideo(completedVideo);
-      setVideoCache((current) => ({
-        ...current,
-        [completedVideo.videoId]: completedVideo
-      }));
-      setQaCache((current) => ({
-        ...current,
-        [completedVideo.videoId]: current[completedVideo.videoId] ?? []
-      }));
-      setQuizSelections((current) => ({
-        ...current,
-        [completedVideo.videoId]: current[completedVideo.videoId] ?? {}
-      }));
-      setQuizRevealed((current) => ({
-        ...current,
-        [completedVideo.videoId]: current[completedVideo.videoId] ?? {}
-      }));
-      setQuizProgress((current) => ({
-        ...current,
-        [completedVideo.videoId]: 0
-      }));
-      setQuizShortAnswers((current) => ({
-        ...current,
-        [completedVideo.videoId]: current[completedVideo.videoId] ?? {}
-      }));
-      setQuizGrades((current) => ({
-        ...current,
-        [completedVideo.videoId]: current[completedVideo.videoId] ?? {}
-      }));
-      setActiveTab("notes");
-      setProcessingState(null);
-    } catch (processError) {
-      const message = processError instanceof Error ? processError.message : "Unable to process that video.";
-      setError(message);
-      setShowManualTranscriptFallback(isTranscriptAccessError(message));
-      setProcessingState(null);
-    } finally {
-      setProcessing(false);
+      await getJson("/api/logout", { method: "POST" });
+      router.refresh();
+    } catch {
+      setError("Unable to log out.");
     }
   }
 
-  async function handleManualTranscriptSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedUrl = videoUrlInput.trim();
-    const trimmedTranscript = manualTranscript.trim();
+  function handleThemeToggle() {
+    const nextTheme =
+      settings.theme === "light"
+        ? "dark"
+        : settings.theme === "dark"
+        ? "system"
+        : "light";
 
-    if (!trimmedUrl || !trimmedTranscript || processing) {
-      return;
-    }
-
-    setProcessing(true);
-    setError("");
-    setProcessingState({
-      taskId: "",
-      stage: "transcript",
-      detail: "Using your pasted transcript",
-      progress: 10
-    });
-
-    try {
-      const data = await getJson<{ video?: ProcessedVideo; taskId?: string; done?: boolean }>("/api/process-video", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          videoUrl: trimmedUrl,
-          manualTranscript: trimmedTranscript
-        })
-      });
-
-      if (!data.done || !data.video) {
-        throw new Error("The server did not return a completed study pack.");
-      }
-
-      const video = data.video;
-      setActiveVideo(video);
-      setVideoCache((current) => ({
-        ...current,
-        [video.videoId]: video
-      }));
-      setQaCache((current) => ({
-        ...current,
-        [video.videoId]: current[video.videoId] ?? []
-      }));
-      setQuizSelections((current) => ({
-        ...current,
-        [video.videoId]: current[video.videoId] ?? {}
-      }));
-      setQuizRevealed((current) => ({
-        ...current,
-        [video.videoId]: current[video.videoId] ?? {}
-      }));
-      setQuizProgress((current) => ({
-        ...current,
-        [video.videoId]: 0
-      }));
-      setQuizShortAnswers((current) => ({
-        ...current,
-        [video.videoId]: current[video.videoId] ?? {}
-      }));
-      setQuizGrades((current) => ({
-        ...current,
-        [video.videoId]: current[video.videoId] ?? {}
-      }));
-      setActiveTab("notes");
-      setProcessingState(null);
-      setShowManualTranscriptFallback(false);
-      setManualTranscript("");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to process that transcript.");
-      setProcessingState(null);
-    } finally {
-      setProcessing(false);
-    }
+    setSettings((current) => ({
+      ...current,
+      theme: nextTheme
+    }));
+    applyTheme(nextTheme);
   }
 
   function handleSelectQuizOption(questionId: string, optionId: string) {
-    if (!activeVideo || activeQuizIsRevealed) {
-      return;
-    }
+    if (!activeVideo) return;
 
     setQuizSelections((current) => ({
       ...current,
@@ -702,25 +561,39 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
     }));
   }
 
+  function handleShortAnswerChange(questionId: string, text: string) {
+    if (!activeVideo) return;
+
+    setQuizShortAnswers((current) => ({
+      ...current,
+      [activeVideo.videoId]: {
+        ...(current[activeVideo.videoId] ?? {}),
+        [questionId]: text
+      }
+    }));
+  }
+
   async function handleSubmitQuizAnswer() {
-    if (!activeVideo || !activeQuizQuestion) {
+    if (!activeVideo || !activeQuizQuestion) return;
+
+    if (activeQuizQuestion.type === "mcq") {
+      setQuizRevealed((current) => ({
+        ...current,
+        [activeVideo.videoId]: {
+          ...(current[activeVideo.videoId] ?? {}),
+          [activeQuizQuestion.id]: true
+        }
+      }));
       return;
     }
 
-    if (activeQuizQuestion.type === "mcq" && !activeQuizSelection) {
-      return;
-    }
+    setGradingQuiz(true);
+    setError("");
 
-    if (activeQuizQuestion.type === "short-answer" && !activeQuizShortAnswer.trim()) {
-      return;
-    }
-
-    if (activeQuizQuestion.type === "short-answer") {
-      setGradingQuiz(true);
-      setError("");
-
-      try {
-        const data = await getJson<{ grade: ShortAnswerGrade }>("/api/grade-question", {
+    try {
+      const data = await getJson<{ grade: ShortAnswerGrade }>(
+        "/api/grade-short-answer",
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -728,65 +601,53 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
           body: JSON.stringify({
             videoId: activeVideo.videoId,
             questionId: activeQuizQuestion.id,
-            studentAnswer: activeQuizShortAnswer
+            answer: activeQuizShortAnswer
           })
-        });
+        }
+      );
 
-        setQuizGrades((current) => ({
-          ...current,
-          [activeVideo.videoId]: {
-            ...(current[activeVideo.videoId] ?? {}),
-            [activeQuizQuestion.id]: data.grade
-          }
-        }));
-      } catch (gradeError) {
-        setError(gradeError instanceof Error ? gradeError.message : "Unable to grade that answer.");
-        setGradingQuiz(false);
-        return;
-      } finally {
-        setGradingQuiz(false);
-      }
+      setQuizGrades((current) => ({
+        ...current,
+        [activeVideo.videoId]: {
+          ...(current[activeVideo.videoId] ?? {}),
+          [activeQuizQuestion.id]: data.grade
+        }
+      }));
+
+      setQuizRevealed((current) => ({
+        ...current,
+        [activeVideo.videoId]: {
+          ...(current[activeVideo.videoId] ?? {}),
+          [activeQuizQuestion.id]: true
+        }
+      }));
+    } catch (gradeError) {
+      setError(
+        gradeError instanceof Error
+          ? gradeError.message
+          : "Unable to grade this answer."
+      );
+    } finally {
+      setGradingQuiz(false);
     }
-
-    setQuizRevealed((current) => ({
-      ...current,
-      [activeVideo.videoId]: {
-        ...(current[activeVideo.videoId] ?? {}),
-        [activeQuizQuestion.id]: true
-      }
-    }));
-  }
-
-  function handleShortAnswerChange(questionId: string, value: string) {
-    if (!activeVideo || activeQuizIsRevealed) {
-      return;
-    }
-
-    setQuizShortAnswers((current) => ({
-      ...current,
-      [activeVideo.videoId]: {
-        ...(current[activeVideo.videoId] ?? {}),
-        [questionId]: value
-      }
-    }));
   }
 
   function handleNextQuizQuestion() {
-    if (!activeVideo) {
-      return;
-    }
+    if (!activeVideo) return;
 
     setQuizProgress((current) => ({
       ...current,
-      [activeVideo.videoId]: Math.min((current[activeVideo.videoId] ?? 0) + 1, activeVideo.quiz.length - 1)
+      [activeVideo.videoId]: activeQuizIndex + 1
     }));
   }
 
   function handleRestartQuiz() {
-    if (!activeVideo) {
-      return;
-    }
+    if (!activeVideo) return;
 
+    setQuizProgress((current) => ({
+      ...current,
+      [activeVideo.videoId]: 0
+    }));
     setQuizSelections((current) => ({
       ...current,
       [activeVideo.videoId]: {}
@@ -794,10 +655,6 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
     setQuizRevealed((current) => ({
       ...current,
       [activeVideo.videoId]: {}
-    }));
-    setQuizProgress((current) => ({
-      ...current,
-      [activeVideo.videoId]: 0
     }));
     setQuizShortAnswers((current) => ({
       ...current,
@@ -808,284 +665,284 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
       [activeVideo.videoId]: {}
     }));
   }
-
-  async function handleAskQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const question = questionDraft.trim();
-    if (!activeVideo || !question || asking) {
-      return;
-    }
-
-    const optimisticUserMessage: QuestionAnswerMessage = {
-      id: `qa-user-${Date.now()}`,
-      role: "user",
-      content: question,
-      createdAt: new Date().toISOString()
-    };
-
-    setQaCache((current) => ({
-      ...current,
-      [activeVideo.videoId]: [...(current[activeVideo.videoId] ?? []), optimisticUserMessage]
-    }));
-    setQuestionDraft("");
-    setAsking(true);
-    setError("");
-
-    try {
-      const data = await getJson<{ answer: string }>("/api/ask-question", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          videoId: activeVideo.videoId,
-          question
-        })
-      });
-
-      const assistantMessage: QuestionAnswerMessage = {
-        id: `qa-assistant-${Date.now()}`,
-        role: "assistant",
-        content: data.answer,
-        createdAt: new Date().toISOString()
-      };
-
-      setQaCache((current) => ({
-        ...current,
-        [activeVideo.videoId]: [...(current[activeVideo.videoId] ?? []), assistantMessage]
-      }));
-    } catch (askError) {
-      setQaCache((current) => ({
-        ...current,
-        [activeVideo.videoId]: (current[activeVideo.videoId] ?? []).filter(
-          (message) => message.id !== optimisticUserMessage.id
-        )
-      }));
-      setQuestionDraft(question);
-      setError(askError instanceof Error ? askError.message : "Unable to answer that question.");
-    } finally {
-      setAsking(false);
-    }
-  }
-
   async function handleGenerateQuiz() {
-    if (!activeVideo || generatingQuiz || activeVideo.quiz.length > 0) {
-      return;
-    }
+    if (!activeVideo) return;
 
     setGeneratingQuiz(true);
     setError("");
 
     try {
-      const data = await getJson<{ video: ProcessedVideo }>("/api/generate-quiz", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          videoId: activeVideo.videoId
-        })
-      });
+      const data = await getJson<{ quiz: ProcessedVideo["quiz"] }>(
+        "/api/generate-quiz",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            videoId: activeVideo.videoId
+          })
+        }
+      );
 
-      setActiveVideo(data.video);
+      const updated = {
+        ...activeVideo,
+        quiz: data.quiz
+      };
+
+      setActiveVideo(updated);
       setVideoCache((current) => ({
         ...current,
-        [data.video.videoId]: data.video
+        [updated.videoId]: updated
       }));
+
       setQuizProgress((current) => ({
         ...current,
-        [data.video.videoId]: 0
+        [updated.videoId]: 0
       }));
       setQuizSelections((current) => ({
         ...current,
-        [data.video.videoId]: current[data.video.videoId] ?? {}
+        [updated.videoId]: {}
       }));
       setQuizRevealed((current) => ({
         ...current,
-        [data.video.videoId]: current[data.video.videoId] ?? {}
+        [updated.videoId]: {}
       }));
       setQuizShortAnswers((current) => ({
         ...current,
-        [data.video.videoId]: current[data.video.videoId] ?? {}
+        [updated.videoId]: {}
       }));
       setQuizGrades((current) => ({
         ...current,
-        [data.video.videoId]: current[data.video.videoId] ?? {}
+        [updated.videoId]: {}
       }));
     } catch (quizError) {
-      setError(quizError instanceof Error ? quizError.message : "Unable to generate the quiz right now.");
+      setError(
+        quizError instanceof Error
+          ? quizError.message
+          : "Unable to generate quiz."
+      );
     } finally {
       setGeneratingQuiz(false);
     }
   }
 
   async function handleGenerateFlashcards() {
-    if (!activeVideo || generatingFlashcards || activeVideo.flashcards.length > 0) {
-      return;
-    }
+    if (!activeVideo) return;
 
     setGeneratingFlashcards(true);
     setError("");
 
     try {
-      const data = await getJson<{ video: ProcessedVideo }>("/api/generate-flashcards", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          videoId: activeVideo.videoId
-        })
-      });
+      const data = await getJson<{ flashcards: ProcessedVideo["flashcards"] }>(
+        "/api/generate-flashcards",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            videoId: activeVideo.videoId
+          })
+        }
+      );
 
-      setActiveVideo(data.video);
+      const updated = {
+        ...activeVideo,
+        flashcards: data.flashcards
+      };
+
+      setActiveVideo(updated);
       setVideoCache((current) => ({
         ...current,
-        [data.video.videoId]: data.video
+        [updated.videoId]: updated
       }));
-    } catch (flashcardError) {
-      setError(flashcardError instanceof Error ? flashcardError.message : "Unable to generate flashcards right now.");
+    } catch (flashError) {
+      setError(
+        flashError instanceof Error
+          ? flashError.message
+          : "Unable to generate flashcards."
+      );
     } finally {
       setGeneratingFlashcards(false);
     }
   }
 
+  async function handleAskQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeVideo) return;
+
+    const trimmed = questionDraft.trim();
+    if (!trimmed) return;
+
+    setAsking(true);
+    setError("");
+
+    const videoId = activeVideo.videoId;
+
+    setQaCache((current) => ({
+      ...current,
+      [videoId]: [
+        ...(current[videoId] ?? []),
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: trimmed
+        }
+      ]
+    }));
+
+    setQuestionDraft("");
+
+    try {
+      const data = await getJson<{ message: QuestionAnswerMessage }>(
+        "/api/ask-question",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            videoId,
+            question: trimmed
+          })
+        }
+      );
+
+      setQaCache((current) => ({
+        ...current,
+        [videoId]: [
+          ...(current[videoId] ?? []),
+          data.message
+        ]
+      }));
+    } catch (qaError) {
+      setError(
+        qaError instanceof Error
+          ? qaError.message
+          : "Unable to answer this question."
+      );
+    } finally {
+      setAsking(false);
+    }
+  }
+
   return (
-    <main className="learning-app">
-      <section className="learning-shell">
-        <header className="panel learning-topbar">
-          <div className="learning-brand-lockup">
-            <div className="learning-brand-mark">Y</div>
-            <div>
-              <p className="muted sidebar-eyebrow">LessonLift workspace</p>
-              <h1>Welcome back, {user.name}</h1>
-            </div>
-          </div>
-          <div className="learning-header-actions">
-            <button className="button button-secondary" onClick={handleThemeToggle} type="button">
-              Theme: {settings.theme}
+    <main className="workspace">
+      <header className="workspace-header">
+        <div className="workspace-header-left">
+          <h1 className="workspace-title">LessonLift</h1>
+          <form className="video-form" onSubmit={handleProcessVideo}>
+            <input
+              className="video-input"
+              placeholder="Paste a YouTube link..."
+              value={videoUrlInput}
+              onChange={(event) => setVideoUrlInput(event.target.value)}
+            />
+            <button
+              className="button button-primary"
+              disabled={processing}
+              type="submit"
+            >
+              {processing ? "Processing..." : "Load"}
             </button>
-            <button className="button button-secondary" onClick={() => setSettingsOpen(true)} type="button">
-              Settings
-            </button>
-            <button className="button button-secondary" onClick={handleLogout} type="button">
-              Log out
-            </button>
-          </div>
-        </header>
+          </form>
+        </div>
 
-        <section className="hero-card learning-hero">
-          <div className="learning-hero-copy">
-            <p className="learning-kicker">YouTube to study pack</p>
-            <h2>Build revision notes, quizzes, and grounded answers from one lesson.</h2>
-            <p className="muted learning-subtitle">
-              Drop in a YouTube link and the workspace turns it into a proper learning set you can read, test, and ask
-              from.
-            </p>
+        <div className="workspace-header-right">
+          <button
+            className="button button-secondary"
+            onClick={() => setSettingsOpen(true)}
+            type="button"
+          >
+            Settings
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={handleLogout}
+            type="button"
+          >
+            Log out
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={handleThemeToggle}
+            type="button"
+          >
+            Theme
+          </button>
+        </div>
+      </header>
 
-            <form className="learning-url-form" onSubmit={handleProcessVideo}>
-              <input
-                className="learning-url-input"
-                placeholder="https://www.youtube.com/watch?v=..."
-                value={videoUrlInput}
-                onChange={(event) => setVideoUrlInput(event.target.value)}
-              />
-              <button className="button button-primary learning-generate-button" disabled={processing || !videoUrlInput.trim()} type="submit">
-                {processing ? "Processing video..." : "Generate study pack"}
-              </button>
-            </form>
+      {error ? (
+        <p className="error-text workspace-error">{error}</p>
+      ) : null}
 
-            <div className="learning-meta-row">
-              <span className="learning-pill">{provider.label}</span>
-              <span className="learning-pill">{settings.model}</span>
-              <span className="learning-pill">Notes + Quiz + Q&A</span>
-            </div>
-          </div>
-
-          <div className="learning-hero-aside panel">
-            <div className="learning-overview-card">
-              <p className="muted sidebar-eyebrow">Workspace snapshot</p>
-              <div className="learning-overview-grid">
-                <div className="learning-overview-metric">
-                  <strong>{activeVideo ? 1 : 0}</strong>
-                  <span className="muted">Active lesson</span>
-                </div>
-                <div className="learning-overview-metric">
-                  <strong>{activeVideo?.quiz.length ?? 0}</strong>
-                  <span className="muted">Quiz items</span>
-                </div>
-                <div className="learning-overview-metric">
-                  <strong>{qaMessages.length}</strong>
-                  <span className="muted">Follow-up answers</span>
-                </div>
-              </div>
-            </div>
-            <div className="learning-tip-card">
-              <p className="muted sidebar-eyebrow">Best results</p>
-              <ul className="learning-mini-list">
-                <li>Use lesson videos with clear spoken explanations</li>
-                <li>Regenerate after changing the model in settings</li>
-                <li>Ask follow-ups after reading the note summary first</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {error ? <p className="error-text workspace-error">{error}</p> : null}
-
-        {showManualTranscriptFallback ? (
-          <section className="panel learning-status">
-            <div className="learning-status-badge">Transcript fallback</div>
-            <div>
-              <h2>Paste the transcript manually</h2>
-              <p className="muted">
-                Automatic transcript access was blocked for this video. Paste the transcript text below and we’ll still
-                generate the study pack from it.
-              </p>
-            </div>
-            <form className="learning-url-form" onSubmit={handleManualTranscriptSubmit}>
-              <textarea
-                className="learning-url-input"
-                placeholder="Paste the transcript text here..."
-                rows={8}
-                value={manualTranscript}
-                onChange={(event) => setManualTranscript(event.target.value)}
-              />
-              <button
-                className="button button-primary learning-generate-button"
-                disabled={processing || !manualTranscript.trim()}
-                type="submit"
-              >
-                {processing ? "Building from transcript..." : "Use pasted transcript"}
-              </button>
-            </form>
-          </section>
-        ) : null}
-
+      <section className="workspace-body">
         {processing ? (
           <section className="learning-status panel">
             <div className="learning-status-badge">Processing video</div>
             <div>
               <h2>Building your study pack</h2>
               <p className="muted">
-                {processingState?.detail ?? "Extracting the transcript, preparing the lesson, generating notes, and building the quiz."}
+                {processingState?.detail ??
+                  "Extracting the transcript, preparing the lesson, generating notes, and building the quiz."}
               </p>
               <div className="learning-progress-track" aria-hidden="true">
                 <div
                   className="learning-progress-fill"
-                  style={{ width: `${Math.max(4, processingState?.progress ?? 6)}%` }}
+                  style={{
+                    width: `${Math.max(
+                      4,
+                      processingState?.progress ?? 6
+                    )}%`
+                  }}
                 />
               </div>
             </div>
             <div className="learning-status-steps">
-              <span className={processingState?.stage === "transcript" ? "is-active" : ""}>Transcript</span>
-              <span className={processingState?.stage === "cleaning" || processingState?.stage === "notes" ? "is-active" : ""}>Notes</span>
-              <span className={processingState?.stage === "mcq" || processingState?.stage === "written" ? "is-active" : ""}>Quiz</span>
-              <span className={processingState?.stage === "saving" || processingState?.stage === "completed" ? "is-active" : ""}>Finalizing</span>
+              <span
+                className={
+                  processingState?.stage === "transcript"
+                    ? "is-active"
+                    : ""
+                }
+              >
+                Transcript
+              </span>
+              <span
+                className={
+                  processingState?.stage === "cleaning" ||
+                  processingState?.stage === "notes"
+                    ? "is-active"
+                    : ""
+                }
+              >
+                Notes
+              </span>
+              <span
+                className={
+                  processingState?.stage === "mcq" ||
+                  processingState?.stage === "written"
+                    ? "is-active"
+                    : ""
+                }
+              >
+                Quiz
+              </span>
+              <span
+                className={
+                  processingState?.stage === "saving" ||
+                  processingState?.stage === "completed"
+                    ? "is-active"
+                    : ""
+                }
+              >
+                Finalizing
+              </span>
             </div>
           </section>
         ) : null}
-
         {activeVideo ? (
           <>
             <section className="learning-video-summary panel">
@@ -1100,60 +957,64 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                   <span className="learning-pill">Transcript: {activeVideo.transcriptLanguage}</span>
                 ) : null}
                 <span className="learning-pill">
-                  {activeVideo.quiz.length ? `Quiz progress: ${answeredQuizCount}/${activeVideo.quiz.length}` : "Quiz unavailable"}
+                  {activeVideo.quiz.length
+                    ? `Quiz progress: ${answeredQuizCount}/${activeVideo.quiz.length}`
+                    : "Quiz unavailable"}
                 </span>
               </div>
             </section>
 
             <nav className="panel learning-tabs-shell">
               <div className="learning-tabs">
-              <button
-                className={`learning-tab ${activeTab === "notes" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("notes")}
-                type="button"
-              >
-                Notes
-              </button>
-              <button
-                className={`learning-tab ${activeTab === "flashcards" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("flashcards")}
-                type="button"
-              >
-                Flashcards
-              </button>
-              <button
-                className={`learning-tab ${activeTab === "quiz" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("quiz")}
-                type="button"
-              >
-                Quiz
-              </button>
-              <button
-                className={`learning-tab ${activeTab === "questions" ? "is-active" : ""}`}
-                onClick={() => setActiveTab("questions")}
-                type="button"
-              >
-                Ask Questions
-              </button>
+                <button
+                  className={`learning-tab ${activeTab === "notes" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("notes")}
+                  type="button"
+                >
+                  Notes
+                </button>
+                <button
+                  className={`learning-tab ${activeTab === "flashcards" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("flashcards")}
+                  type="button"
+                >
+                  Flashcards
+                </button>
+                <button
+                  className={`learning-tab ${activeTab === "quiz" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("quiz")}
+                  type="button"
+                >
+                  Quiz
+                </button>
+                <button
+                  className={`learning-tab ${activeTab === "questions" ? "is-active" : ""}`}
+                  onClick={() => setActiveTab("questions")}
+                  type="button"
+                >
+                  Ask Questions
+                </button>
               </div>
               <div className="learning-tab-summary muted">
                 {activeTab === "notes"
                   ? "Structured notes built from the processed transcript"
                   : activeTab === "flashcards"
-                    ? activeVideo.flashcards.length
-                      ? "Flip through quick GCSE revision prompts and answers"
-                      : "Generate flashcards for this lesson"
+                  ? activeVideo.flashcards.length
+                    ? "Flip through quick GCSE revision prompts and answers"
+                    : "Generate flashcards for this lesson"
                   : activeTab === "quiz"
-                    ? activeVideo.quiz.length
-                      ? "Answer each question before the explanation appears"
-                      : "Generate or regenerate the quiz for this lesson"
-                    : "Ask only from the lesson transcript"}
+                  ? activeVideo.quiz.length
+                    ? "Answer each question before the explanation appears"
+                    : "Generate or regenerate the quiz for this lesson"
+                  : "Ask only from the lesson transcript"}
               </div>
             </nav>
 
             <section className="learning-content panel">
               {activeTab === "notes" ? (
-                <article className="learning-rich-text">{renderRichStudyText(activeVideo.notes)}</article>
+                <article className="learning-rich-text">
+                  {renderRichStudyText(activeVideo.notes)}
+                </article>
               ) : null}
 
               {activeTab === "flashcards" ? (
@@ -1215,7 +1076,12 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                         <p className="muted">
                           Notes load first to keep the cloud workflow responsive. The quiz is built separately from the same lesson.
                         </p>
-                        <button className="button button-primary" disabled={generatingQuiz} onClick={handleGenerateQuiz} type="button">
+                        <button
+                          className="button button-primary"
+                          disabled={generatingQuiz}
+                          onClick={handleGenerateQuiz}
+                          type="button"
+                        >
                           {generatingQuiz ? "Generating quiz..." : "Generate quiz"}
                         </button>
                       </div>
@@ -1239,13 +1105,14 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                             const isCorrect = activeQuizQuestion.correctOptionId === option.id;
                             const isWrongSelection = activeQuizIsRevealed && isSelected && !isCorrect;
                             const showCorrectState = activeQuizIsRevealed && isCorrect;
+
                             const optionStateClass = showCorrectState
                               ? "is-correct"
                               : isWrongSelection
-                                ? "is-incorrect"
-                                : isSelected
-                                  ? "is-selected"
-                                  : "";
+                              ? "is-incorrect"
+                              : isSelected
+                              ? "is-selected"
+                              : "";
 
                             return (
                               <button
@@ -1269,7 +1136,9 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                             placeholder="Type your exam-style answer here..."
                             rows={6}
                             value={activeQuizShortAnswer}
-                            onChange={(event) => handleShortAnswerChange(activeQuizQuestion.id, event.target.value)}
+                            onChange={(event) =>
+                              handleShortAnswerChange(activeQuizQuestion.id, event.target.value)
+                            }
                           />
                           <p className="muted quiz-written-help">
                             Write a response that matches a {activeQuizQuestion.markCount}-mark answer.
@@ -1290,13 +1159,21 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                             onClick={handleSubmitQuizAnswer}
                             type="button"
                           >
-                            {activeQuizQuestion.type === "short-answer" && gradingQuiz ? "Marking..." : "Check answer"}
+                            {activeQuizQuestion.type === "short-answer" && gradingQuiz
+                              ? "Marking..."
+                              : "Check answer"}
                           </button>
                         ) : (
                           <>
                             <div className="quiz-feedback">
                               {activeQuizQuestion.type === "mcq" ? (
-                                <p className={activeQuizSelection === activeQuizQuestion.correctOptionId ? "quiz-feedback-correct" : "quiz-feedback-wrong"}>
+                                <p
+                                  className={
+                                    activeQuizSelection === activeQuizQuestion.correctOptionId
+                                      ? "quiz-feedback-correct"
+                                      : "quiz-feedback-wrong"
+                                  }
+                                >
                                   {activeQuizSelection === activeQuizQuestion.correctOptionId
                                     ? "Correct answer."
                                     : `Incorrect. The correct answer is ${activeQuizQuestion.answer}.`}
@@ -1304,15 +1181,19 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                               ) : (
                                 <>
                                   <p className="quiz-feedback-neutral">
-                                    Awarded {activeQuizGrade?.awardedMarks ?? 0} / {activeQuizQuestion.markCount} marks
+                                    Awarded {activeQuizGrade?.awardedMarks ?? 0} /{" "}
+                                    {activeQuizQuestion.markCount} marks
                                   </p>
                                   <p>{activeQuizGrade?.feedback ?? "No detailed feedback returned yet."}</p>
+
                                   {activeQuizQuestion.markScheme?.length ? (
                                     <div className="quiz-markscheme">
                                       <p className="quiz-feedback-neutral">Mark scheme breakdown</p>
                                       <div className="quiz-markscheme-points">
                                         {activeQuizQuestion.markScheme.map((point) => {
-                                          const gradedPoint = activeQuizGrade?.matchedPoints.find((item) => item.pointId === point.id);
+                                          const gradedPoint = activeQuizGrade?.matchedPoints.find(
+                                            (item) => item.pointId === point.id
+                                          );
 
                                           return (
                                             <article
@@ -1323,7 +1204,8 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                                             >
                                               <div className="quiz-markscheme-point-header">
                                                 <strong>
-                                                  {point.marks} {point.marks === 1 ? "mark" : "marks"} for {point.label}
+                                                  {point.marks} {point.marks === 1 ? "mark" : "marks"} for{" "}
+                                                  {point.label}
                                                 </strong>
                                                 <span>{gradedPoint?.awarded ? "Awarded" : "Not awarded"}</span>
                                               </div>
@@ -1337,20 +1219,31 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                                       </div>
                                     </div>
                                   ) : null}
+
                                   <p className="quiz-feedback-neutral">Suggested full-mark answer:</p>
                                   <div className="quiz-model-answer">
                                     <p>{activeQuizQuestion.answer}</p>
                                   </div>
                                 </>
                               )}
+
                               <p className="muted">{activeQuizQuestion.explanation}</p>
                             </div>
+
                             {activeQuizIndex < activeVideo.quiz.length - 1 ? (
-                              <button className="button button-primary" onClick={handleNextQuizQuestion} type="button">
+                              <button
+                                className="button button-primary"
+                                onClick={handleNextQuizQuestion}
+                                type="button"
+                              >
                                 Next question
                               </button>
                             ) : (
-                              <button className="button button-secondary" onClick={handleRestartQuiz} type="button">
+                              <button
+                                className="button button-secondary"
+                                onClick={handleRestartQuiz}
+                                type="button"
+                              >
                                 Restart quiz
                               </button>
                             )}
@@ -1361,7 +1254,6 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                   ) : null}
                 </div>
               ) : null}
-
               {activeTab === "questions" ? (
                 <div className="qa-layout">
                   <div className="qa-history">
@@ -1369,11 +1261,15 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                       qaMessages.map((message) => (
                         <article
                           key={message.id}
-                          className={`message-row ${message.role === "user" ? "is-user" : "is-assistant"}`}
+                          className={`message-row ${
+                            message.role === "user" ? "is-user" : "is-assistant"
+                          }`}
                         >
                           <div className="message-bubble">
                             <div className="message-meta">
-                              <strong>{message.role === "user" ? "You" : "Lesson AI"}</strong>
+                              <strong>
+                                {message.role === "user" ? "You" : "Lesson AI"}
+                              </strong>
                             </div>
                             <p>{message.content}</p>
                           </div>
@@ -1382,7 +1278,10 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                     ) : (
                       <div className="empty-state">
                         <p>Ask a question about this video.</p>
-                        <p className="muted">Answers will use only the processed transcript and no outside knowledge.</p>
+                        <p className="muted">
+                          Answers will use only the processed transcript and no
+                          outside knowledge.
+                        </p>
                       </div>
                     )}
                     <div ref={qaEndRef} />
@@ -1394,13 +1293,19 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                       placeholder="Ask about the video content..."
                       rows={3}
                       value={questionDraft}
-                      onChange={(event) => setQuestionDraft(event.target.value)}
+                      onChange={(event) =>
+                        setQuestionDraft(event.target.value)
+                      }
                     />
                     <div className="composer-actions">
                       <div className="composer-meta">
                         <span>Transcript-grounded answers only</span>
                       </div>
-                      <button className="button button-primary" disabled={asking || !questionDraft.trim()} type="submit">
+                      <button
+                        className="button button-primary"
+                        disabled={asking || !questionDraft.trim()}
+                        type="submit"
+                      >
                         {asking ? "Answering..." : "Ask"}
                       </button>
                     </div>
@@ -1416,22 +1321,31 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                 <p className="muted sidebar-eyebrow">Ready when you are</p>
                 <h2>No lesson loaded yet</h2>
                 <p className="muted">
-                  Paste a YouTube link above to generate study notes, then build a quiz only when you want one.
+                  Paste a YouTube link above to generate study notes, then build
+                  a quiz only when you want one.
                 </p>
-                <p className="muted">Example: {getVideoStub("https://www.youtube.com/watch?v=dQw4w9WgXcQ")}</p>
+                <p className="muted">
+                  Example: {getVideoStub("https://www.youtube.com/watch?v=dQw4w9WgXcQ")}
+                </p>
               </div>
               <div className="learning-empty-preview">
                 <div className="learning-empty-preview-card">
                   <strong>Notes</strong>
-                  <span className="muted">Readable revision sections with clear takeaways</span>
+                  <span className="muted">
+                    Readable revision sections with clear takeaways
+                  </span>
                 </div>
                 <div className="learning-empty-preview-card">
                   <strong>Quiz</strong>
-                  <span className="muted">Interactive question flow with answer feedback</span>
+                  <span className="muted">
+                    Interactive question flow with answer feedback
+                  </span>
                 </div>
                 <div className="learning-empty-preview-card">
                   <strong>Ask Questions</strong>
-                  <span className="muted">Context-aware follow-ups grounded in the transcript</span>
+                  <span className="muted">
+                    Context-aware follow-ups grounded in the transcript
+                  </span>
                 </div>
               </div>
             </div>
@@ -1446,7 +1360,11 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
               <p className="muted sidebar-eyebrow">Backend tuning</p>
               <h2>Processing settings</h2>
             </div>
-            <button className="button button-secondary" onClick={() => setSettingsOpen(false)} type="button">
+            <button
+              className="button button-secondary"
+              onClick={() => setSettingsOpen(false)}
+              type="button"
+            >
               Close
             </button>
           </div>
@@ -1456,7 +1374,9 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
               <label>Provider</label>
               <div className="settings-static-card">
                 <strong>{provider.label}</strong>
-                <p className="muted settings-help">{provider.description}</p>
+                <p className="muted settings-help">
+                  {provider.description}
+                </p>
               </div>
             </div>
 
@@ -1466,7 +1386,12 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                 id="model"
                 list="model-suggestions"
                 value={settingsDraft.model}
-                onChange={(event) => setSettingsDraft((current) => ({ ...current, model: event.target.value }))}
+                onChange={(event) =>
+                  setSettingsDraft((current) => ({
+                    ...current,
+                    model: event.target.value
+                  }))
+                }
               />
               <datalist id="model-suggestions">
                 {provider.modelSuggestions.map((model) => (
@@ -1491,7 +1416,9 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
                   }))
                 }
               />
-              <span className="muted">Current: {settingsDraft.temperature.toFixed(1)}</span>
+              <span className="muted">
+                Current: {settingsDraft.temperature.toFixed(1)}
+              </span>
             </div>
 
             <div className="field">
@@ -1532,9 +1459,15 @@ export function LearningWorkspace({ initialUser, initialSettings }: LearningWork
 
           <div className="settings-actions">
             <p className="muted settings-help">
-              These settings affect transcript cleaning, note generation, quiz generation, and follow-up answers.
+              These settings affect transcript cleaning, note generation, quiz
+              generation, and follow-up answers.
             </p>
-            <button className="button button-primary" disabled={savingSettings} onClick={handleSaveSettings} type="button">
+            <button
+              className="button button-primary"
+              disabled={savingSettings}
+              onClick={handleSaveSettings}
+              type="button"
+            >
               {savingSettings ? "Saving..." : "Save settings"}
             </button>
           </div>
