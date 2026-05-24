@@ -35,13 +35,15 @@ export async function POST(request: NextRequest) {
     return apiError("Process the video first before generating a quiz.", 404);
   }
 
-  if (processedVideo.quiz.length) {
-    return NextResponse.json({ video: processedVideo, cached: true });
+  // ⭐ FIXED: If quiz already exists, match the frontend's expectation by passing the quiz array
+  if (processedVideo.quiz && processedVideo.quiz.length > 0) {
+    return NextResponse.json({ quiz: processedVideo.quiz, cached: true });
   }
 
   try {
     const settings = await getUserSettings(user.id);
     const quizSource = prepareTranscriptForModel(`${processedVideo.notes}\n\n${processedVideo.cleanedTranscript}`, 2600);
+    
     const quiz = await generateLessonQuiz({
       endpoint: env.aiApiUrl,
       model: settings.model,
@@ -54,7 +56,8 @@ export async function POST(request: NextRequest) {
       throw new Error("The quiz was generated but the lesson could not be updated.");
     }
 
-    return NextResponse.json({ video: updatedVideo, cached: false });
+    // ⭐ FIXED: Return the quiz property directly so data.quiz maps seamlessly in the workspace view
+    return NextResponse.json({ quiz: updatedVideo.quiz, cached: false });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Unable to generate this quiz right now.", 500);
   }
