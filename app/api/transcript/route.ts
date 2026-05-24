@@ -12,10 +12,10 @@ const PIPED_INSTANCES = [
 export async function POST(req: Request) {
   try {
     // 1. Authenticate user access using your database middleware
-    const { user, response } = await requireApiUser();
-    if (!user) {
-      return response;
-    }
+    //const { user, response } = await requireApiUser();
+    //if (!user) {
+    //  return response;
+    //}
 
     const body = await req.json().catch(() => ({}));
     const videoUrl = body?.videoUrl;
