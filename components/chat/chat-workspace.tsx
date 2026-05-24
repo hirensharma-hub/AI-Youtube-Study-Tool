@@ -1371,7 +1371,6 @@ export function LearningWorkspace({
       ) : null}
     </main>
   );
-}
 
 async function handleSaveSettings() {
   setSavingSettings(true);
