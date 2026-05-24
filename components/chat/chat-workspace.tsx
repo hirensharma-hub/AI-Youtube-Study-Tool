@@ -396,8 +396,8 @@ export function LearningWorkspace({
     setProcessingState({
       taskId: "init",
       stage: "transcript",
-      detail: "Routing through open text tunnels to secure subtitles...",
-      progress: 10
+      detail: "Initializing backend secure pipeline to extract subtitles...",
+      progress: 15
     });
     
     try {
@@ -408,101 +408,19 @@ export function LearningWorkspace({
         throw new Error("Invalid YouTube URL format.");
       }
 
-      // 2. ALLORIGINS PAYLOAD ENGINE: Fetches pure string data wrapped inside JSON to prevent 403 blocks
-      const targetUrls = [
-        `https://pipedapi.kavin.rocks/streams/${videoId}`,
-        `https://pipedapi.adminforge.de/streams/${videoId}`
-      ];
-
-      let subtitles: any[] | null = null;
-
-      for (const target of targetUrls) {
-        try {
-          console.log(`Bypassing CORS filters using string engine for: ${target}`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-          const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(target)}`, { 
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          if (res.ok) {
-            const wrapper = await res.json().catch(() => null);
-            if (wrapper && wrapper.contents) {
-              const data = JSON.parse(wrapper.contents);
-              if (data && data.subtitles && data.subtitles.length > 0) {
-                const trackTarget = data.subtitles.find((s: any) => s.code?.startsWith("en")) || data.subtitles[0];
-                
-                if (trackTarget && trackTarget.url) {
-                  const vttRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(trackTarget.url)}`);
-                  if (vttRes.ok) {
-                    const vttWrapper = await vttRes.json().catch(() => null);
-                    if (vttWrapper && vttWrapper.contents) {
-                      const vttText = vttWrapper.contents;
-                      const items: any[] = [];
-                      const blocks = vttText.split("\n\n");
-                      
-                      let fallbackTime = 0;
-                      for (const block of blocks) {
-                        if (block.includes("-->")) {
-                          const lines = block.split("\n");
-                          const textLine = lines.slice(1).join(" ").trim();
-                          if (textLine) {
-                            items.push({
-                              text: textLine.replace(/<[^>]*>/g, ""),
-                              start: fallbackTime,
-                              duration: 3
-                            });
-                            fallbackTime += 3;
-                          }
-                        }
-                      }
-                      if (items.length > 0) {
-                        subtitles = items;
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(`String wrapper gateway bypass missed for target: ${target}`, e);
-        }
-      }
-
-      if (!subtitles || subtitles.length === 0) {
-        throw new Error("All transcript data pipelines are currently locked. Please try a different video or try again soon.");
-      }
-
-      const fullTranscriptText = subtitles.map((s: any) => s.text).join(" ");
-
-      setProcessingState({
-        taskId: "init",
-        stage: "notes",
-        detail: "Transcript secured! Triggering AI background orchestration pipeline...",
-        progress: 30
-      });
-
-      // 3. Forward the transcript data to the process-video endpoint
+      // 2. Offload extraction completely to server runtime to execute safely without CORS roadblocks
       const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoUrl: trimmedUrl,
-          transcript: {
-            videoId: videoId,
-            rawTranscript: fullTranscriptText,
-            transcriptLanguage: "en"
-          }
+          videoId: videoId // Send along the extracted videoId for safety
         })
       });
 
       if (!processedResponse.ok) {
         const err = await processedResponse.json().catch(() => ({}));
-        throw new Error(err.error || "Processing pipeline initialization failed.");
+        throw new Error(err.error || "The processing pipeline rejected this video or failed to pull subtitles.");
       }
 
       const initialResult = await processedResponse.json();
