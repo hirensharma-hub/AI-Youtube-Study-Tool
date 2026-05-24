@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchTranscriptClient } from "@/utils/fetchTranscriptClient";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
