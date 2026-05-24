@@ -392,20 +392,61 @@ export function LearningWorkspace({
 
     setError("");
     setProcessing(true);
-    setProcessingState(null);
+    setProcessingState({
+      taskId: "1",
+      stage: "transcript",
+      detail: "Bypassing restrictions and securing subtitles safely...",
+      progress: 15
+    });
 
     try {
-      // Streamlined: Offload the entire transcript parsing to the server route
-      // to keep Vercel datacenter IPs behind safe proxies/caches.
-      const processedResponse = await fetch("/api/process-video", {
+      // 1. Safe extraction through your secure server API endpoint
+      const transcriptResponse = await fetch("/api/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoUrl: trimmedUrl })
       });
 
+      if (!transcriptResponse.ok) {
+        const err = await transcriptResponse.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to extract transcript.");
+      }
+
+      const transcriptData = await transcriptResponse.json();
+
+      // Extract video ID safely to connect packages
+      const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
+      const videoId = match ? match[1] : null;
+      if (!videoId) {
+        throw new Error("Invalid YouTube URL format.");
+      }
+
+      const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
+
+      setProcessingState({
+        taskId: "2",
+        stage: "notes",
+        detail: "Transcript secured! Handing over to AI orchestrator...",
+        progress: 45
+      });
+
+      // 2. Forward the safe text block to your processing engine
+      const processedResponse = await fetch("/api/process-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: trimmedUrl,
+          transcript: {
+            videoId: videoId,
+            rawTranscript: fullTranscriptText,
+            transcriptLanguage: "en"
+          }
+        })
+      });
+
       if (!processedResponse.ok) {
         const err = await processedResponse.json().catch(() => ({}));
-        throw new Error(err.error || "Processing failed.");
+        throw new Error(err.error || "Processing pipeline failed.");
       }
 
       const { video: processed } = await processedResponse.json();
@@ -416,26 +457,11 @@ export function LearningWorkspace({
         [processed.videoId]: processed
       }));
 
-      setQuizProgress((current) => ({
-        ...current,
-        [processed.videoId]: 0
-      }));
-      setQuizSelections((current) => ({
-        ...current,
-        [processed.videoId]: {}
-      }));
-      setQuizRevealed((current) => ({
-        ...current,
-        [processed.videoId]: {}
-      }));
-      setQuizShortAnswers((current) => ({
-        ...current,
-        [processed.videoId]: {}
-      }));
-      setQuizGrades((current) => ({
-        ...current,
-        [processed.videoId]: {}
-      }));
+      setQuizProgress((current) => ({ ...current, [processed.videoId]: 0 }));
+      setQuizSelections((current) => ({ ...current, [processed.videoId]: {} }));
+      setQuizRevealed((current) => ({ ...current, [processed.videoId]: {} }));
+      setQuizShortAnswers((current) => ({ ...current, [processed.videoId]: {} }));
+      setQuizGrades((current) => ({ ...current, [processed.videoId]: {} }));
 
       setActiveTab("notes");
     } catch (processError) {
@@ -446,6 +472,7 @@ export function LearningWorkspace({
       );
     } finally {
       setProcessing(false);
+      setProcessingState(null);
     }
   }
 
