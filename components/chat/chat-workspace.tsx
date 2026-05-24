@@ -428,6 +428,16 @@ export function LearningWorkspace({
         throw new Error(err.error || `Failed to extract transcript (Status: ${transcriptResponse.status})`);
       }
 
+      // 🔴 FIXED: Fully defining transcriptData in scope for line 431
+      const transcriptData = await transcriptResponse.json();
+
+      // Extract video ID safely to connect packages
+      const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
+      const videoId = match ? match[1] : null;
+      if (!videoId) {
+        throw new Error("Invalid YouTube URL format.");
+      }
+
       const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
 
       setProcessingState({
