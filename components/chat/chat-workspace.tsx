@@ -428,8 +428,12 @@ export function LearningWorkspace({
         throw new Error(err.error || `Failed to extract transcript (Status: ${transcriptResponse.status})`);
       }
 
-      // 🔴 FIXED: Fully defining transcriptData in scope for line 431
       const transcriptData = await transcriptResponse.json();
+
+      // 🔴 SAFE PARSING: Prevent 'map' undefined crash if subtitles are missing
+      if (!transcriptData || !transcriptData.subtitles) {
+        throw new Error(transcriptData?.error || "The server returned data, but no subtitles array was found.");
+      }
 
       // Extract video ID safely to connect packages
       const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
