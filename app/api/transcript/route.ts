@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     let subtitles: any[] | null = null;
     let workingInstance: string | null = null;
 
-    // -------------------- TIMEDTEXT (Most Reliable Directly Native) --------------------
+    // -------------------- TIMEDTEXT (Native Google Subtitles API) --------------------
     try {
       const listRes = await fetch(
         `https://video.google.com/timedtext?type=list&v=${videoId}`,
@@ -99,9 +99,7 @@ export async function POST(req: Request) {
 
           const data = await res.json().catch(() => null);
           
-          // Check if data contains direct subtitle track entities
           if (data && data.subtitles && data.subtitles.length > 0) {
-            // Find a usable webvtt translation file target
             const trackTarget = data.subtitles.find((s: any) => s.code === "en") || data.subtitles[0];
             
             if (trackTarget && trackTarget.url) {
@@ -109,7 +107,6 @@ export async function POST(req: Request) {
               if (vttRes.ok) {
                 const vttText = await vttRes.text();
                 
-                // Fast-parse VTT file into clean text elements matching workspace mapping requirements
                 const items: any[] = [];
                 const blocks = vttText.split("\n\n");
                 
@@ -123,7 +120,7 @@ export async function POST(req: Request) {
                     if (timeMatch) {
                       const startSecs = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]);
                       items.push({
-                        text: textLine.replace(/<[^>]*>/g, ""), // strip style tags
+                        text: textLine.replace(/<[^>]*>/g, ""),
                         start: startSecs,
                         duration: 2
                       });
@@ -143,33 +140,56 @@ export async function POST(req: Request) {
       }
     }
 
-    // -------------------- LOCAL SCRIPT FALLBACK --------------------
+    // -------------------- NATIVE YOUTUBE SCRAPER (Replaces child_process script) --------------------
     if (!subtitles) {
       try {
-        const { execFile } = await import("child_process");
-        const { promisify } = await import("util");
-        const execFileP = promisify(execFile);
-
-        const { stdout } = await execFileP("node", ["./scripts/fetchTranscript.js", videoId], {
-          timeout: 20000
+        const videoPageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+          cache: "no-store"
         });
+        const html = await videoPageRes.text();
+        
+        const splittedHtml = html.split('"captionTracks":');
+        if (splittedHtml.length > 1) {
+          const videoDetails = splittedHtml[1].split(',"audioTracks"')[0];
+          const tracks = JSON.parse(videoDetails || "[]");
+          
+          const englishTrack = tracks.find((t: any) => t.languageCode === "en") || tracks[0];
+          if (englishTrack && englishTrack.baseUrl) {
+            const finalTracksRes = await fetch(englishTrack.baseUrl, { cache: "no-store" });
+            const xmlText = await finalTracksRes.text();
+            
+            const items: any[] = [];
+            const re = /<text\s+start="([^"]+)"(?:\s+dur="([^"]+)")?[^>]*>([\s\S]*?)<\/text>/g;
+            let m;
 
-        const parsed = JSON.parse(stdout || "{}");
+            while ((m = re.exec(xmlText)) !== null) {
+              const start = parseFloat(m[1]) || 0;
+              const duration = m[2] ? parseFloat(m[2]) : 0;
+              let text = m[3] || "";
+              text = text
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/\+/g, " ");
 
-        if (parsed.subtitles && parsed.subtitles.length > 0) {
-          subtitles = parsed.subtitles.map((s: any) => ({
-            text: s.text,
-            start: s.start ?? s.offset ?? 0,
-            duration: s.duration ?? 0
-          }));
-          workingInstance = parsed.source || "local-script";
+              items.push({ text, start, duration });
+            }
+
+            if (items.length > 0) {
+              subtitles = items;
+              workingInstance = "native-embedded-scraper";
+            }
+          }
         }
       } catch (e) {
-        console.log("Local script fallback failed:", String(e));
+        console.log("Native direct recovery system failed:", String(e));
       }
     }
 
-    // -------------------- FINAL VALDIATION CHECK --------------------
+    // -------------------- FINAL VALIDATION CHECK --------------------
     if (!subtitles || subtitles.length === 0) {
       return NextResponse.json(
         { error: "No subtitles found for this video. Captions may be disabled." },
