@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireApiUser } from "@/lib/api";
+
+// Force this route to compile as a standard Node.js Serverless Function
+export const runtime = "nodejs"; 
+export const dynamic = "force-dynamic";
 
 const PIPED_INSTANCES = [
   "https://pipedapi.kavin.rocks",
@@ -11,12 +14,6 @@ const PIPED_INSTANCES = [
 
 export async function POST(req: Request) {
   try {
-    // 1. Authenticate user access using your database middleware
-    //const { user, response } = await requireApiUser();
-    //if (!user) {
-    //  return response;
-    //}
-
     const body = await req.json().catch(() => ({}));
     const videoUrl = body?.videoUrl;
 
@@ -57,8 +54,7 @@ export async function POST(req: Request) {
 
         if (ttText.includes("<text")) {
           const items: any[] = [];
-          const re =
-            /<text\s+start="([^"]+)"(?:\s+dur="([^"]+)")?[^>]*>([\s\S]*?)<\/text>/g;
+          const re = /<text\s+start="([^"]+)"(?:\s+dur="([^"]+)")?[^>]*>([\s\S]*?)<\/text>/g;
           let m;
 
           while ((m = re.exec(ttText)) !== null) {
@@ -83,7 +79,7 @@ export async function POST(req: Request) {
         }
       }
     } catch (err) {
-      console.log("Timedtext engine bypassed:", String(err));
+      console.log("Timedtext failed:", String(err));
     }
 
     // -------------------- PIPED FALLBACK OVERRIDE --------------------
@@ -96,7 +92,6 @@ export async function POST(req: Request) {
           });
 
           if (!res.ok) continue;
-
           const data = await res.json().catch(() => null);
           
           if (data && data.subtitles && data.subtitles.length > 0) {
@@ -106,7 +101,6 @@ export async function POST(req: Request) {
               const vttRes = await fetch(trackTarget.url);
               if (vttRes.ok) {
                 const vttText = await vttRes.text();
-                
                 const items: any[] = [];
                 const blocks = vttText.split("\n\n");
                 
@@ -140,7 +134,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // -------------------- NATIVE YOUTUBE SCRAPER (Replaces child_process script) --------------------
+    // -------------------- NATIVE YOUTUBE SCRAPER --------------------
     if (!subtitles) {
       try {
         const videoPageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
@@ -185,19 +179,17 @@ export async function POST(req: Request) {
           }
         }
       } catch (e) {
-        console.log("Native direct recovery system failed:", String(e));
+        console.log("Direct recovery failed:", String(e));
       }
     }
 
-    // -------------------- FINAL VALIDATION CHECK --------------------
     if (!subtitles || subtitles.length === 0) {
       return NextResponse.json(
-        { error: "No subtitles found for this video. Captions may be disabled." },
+        { error: "No subtitles found for this video." },
         { status: 404 }
       );
     }
 
-    // Normalize output fields array clean for workspace execution loop
     const normalizedSubtitles = subtitles.map((item: any) => ({
       text: String(item.text || ""),
       start: Number(item.start || 0),
@@ -210,7 +202,7 @@ export async function POST(req: Request) {
     );
   } catch (err) {
     return NextResponse.json(
-      { error: "Internal server error processing transcript payload" },
+      { error: "Internal server error processing transcript" },
       { status: 500 }
     );
   }
