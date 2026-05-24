@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchTranscriptClient } from "@/utils/fetchTranscriptClient";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
@@ -393,14 +394,14 @@ export function LearningWorkspace({
     setError("");
     setProcessing(true);
     setProcessingState({
-      taskId: "1",
+      taskId: "init",
       stage: "transcript",
       detail: "Bypassing restrictions and securing subtitles safely...",
-      progress: 15
+      progress: 10
     });
 
     try {
-      // 1. Safe extraction through your secure server API endpoint
+      // 1. Safe extraction through your secure server proxy endpoint
       const transcriptResponse = await fetch("/api/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -424,13 +425,13 @@ export function LearningWorkspace({
       const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
 
       setProcessingState({
-        taskId: "2",
+        taskId: "init",
         stage: "notes",
-        detail: "Transcript secured! Handing over to AI orchestrator...",
-        progress: 45
+        detail: "Transcript secured! Triggering AI background orchestration pipeline...",
+        progress: 30
       });
 
-      // 2. Forward the safe text block to your processing engine
+      // 2. Forward the transcript data to the process-video endpoint
       const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -446,22 +447,67 @@ export function LearningWorkspace({
 
       if (!processedResponse.ok) {
         const err = await processedResponse.json().catch(() => ({}));
-        throw new Error(err.error || "Processing pipeline failed.");
+        throw new Error(err.error || "Processing pipeline initialization failed.");
       }
 
-      const { video: processed } = await processedResponse.json();
+      const initialResult = await processedResponse.json();
 
-      setActiveVideo(processed);
+      // 3. Handle inline processing vs background task polling
+      let finalVideoData: ProcessedVideo | null = null;
+
+      if (initialResult.done && initialResult.video) {
+        // Handle immediate synchronous returns (local dev / production fallback overrides)
+        finalVideoData = initialResult.video;
+      } else if (initialResult.taskId) {
+        // Polling loop required for background-orchestrated tasks on production/Vercel
+        const currentTaskId = initialResult.taskId;
+        let isCompleted = false;
+
+        while (!isCompleted) {
+          // Wait 2.5 seconds between polling iterations to prevent blasting the API
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+
+          const pollResponse = await fetch(`/api/process-video?taskId=${currentTaskId}`);
+          if (!pollResponse.ok) {
+            const err = await pollResponse.json().catch(() => ({}));
+            throw new Error(err.error || "Error monitoring your study pack creation.");
+          }
+
+          const taskStatus = await pollResponse.json();
+
+          if (taskStatus.status === "completed") {
+            finalVideoData = taskStatus.video;
+            isCompleted = true;
+          } else if (taskStatus.status === "failed") {
+            throw new Error(taskStatus.error || "AI background generation failed.");
+          } else {
+            // Keep the user engaged with live progress metrics from the server worker
+            setProcessingState({
+              taskId: currentTaskId,
+              stage: taskStatus.stage || "notes",
+              detail: taskStatus.detail || "Refining your lesson materials...",
+              progress: Math.min(98, Math.max(35, taskStatus.progress || 35))
+            });
+          }
+        }
+      }
+
+      if (!finalVideoData) {
+        throw new Error("Pipeline terminated without delivering a valid study pack.");
+      }
+
+      // 4. Update UI states seamlessly with the finalized dataset
+      setActiveVideo(finalVideoData);
       setVideoCache((current) => ({
         ...current,
-        [processed.videoId]: processed
+        [finalVideoData!.videoId]: finalVideoData!
       }));
 
-      setQuizProgress((current) => ({ ...current, [processed.videoId]: 0 }));
-      setQuizSelections((current) => ({ ...current, [processed.videoId]: {} }));
-      setQuizRevealed((current) => ({ ...current, [processed.videoId]: {} }));
-      setQuizShortAnswers((current) => ({ ...current, [processed.videoId]: {} }));
-      setQuizGrades((current) => ({ ...current, [processed.videoId]: {} }));
+      setQuizProgress((current) => ({ ...current, [finalVideoData!.videoId]: 0 }));
+      setQuizSelections((current) => ({ ...current, [finalVideoData!.videoId]: {} }));
+      setQuizRevealed((current) => ({ ...current, [finalVideoData!.videoId]: {} }));
+      setQuizShortAnswers((current) => ({ ...current, [finalVideoData!.videoId]: {} }));
+      setQuizGrades((current) => ({ ...current, [finalVideoData!.videoId]: {} }));
 
       setActiveTab("notes");
     } catch (processError) {
@@ -1288,6 +1334,7 @@ export function LearningWorkspace({
           </section>
         )}
       </section>
+
       {settingsOpen ? (
         <section className="settings-drawer panel">
           <div className="settings-header">
