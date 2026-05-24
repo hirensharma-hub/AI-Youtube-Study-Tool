@@ -399,10 +399,13 @@ export function LearningWorkspace({
       detail: "Bypassing restrictions and securing subtitles safely...",
       progress: 10
     });
-
     try {
-      // 1. Safe extraction through your secure server proxy endpoint
-      const transcriptResponse = await fetch("/api/transcript", {
+      // 1. Force the fetch to use the absolute window origin to bypass sub-page routing conflicts
+      const targetUrl = typeof window !== "undefined" 
+        ? `${window.location.origin}/api/transcript` 
+        : "/api/transcript";
+
+      const transcriptResponse = await fetch(targetUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoUrl: trimmedUrl })
