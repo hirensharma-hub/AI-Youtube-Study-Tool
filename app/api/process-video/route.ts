@@ -21,7 +21,6 @@ import {
 } from "@/lib/web-verify";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 
-// Explicitly define schema constraints matching client payload
 const processSchema = z.object({
   videoUrl: z.string().trim().url(),
   manualTranscript: z.string().trim().min(1).optional(),
@@ -256,7 +255,7 @@ async function runProcessing(
 
   onProgress?.({
     stage: "transcript",
-    detail: transcriptOverride ? "Verifying data stream structure..." : "Parsing transcript block",
+    detail: transcriptOverride ? "Using the browser transcript" : "No transcript provided",
     progress: 8
   });
 
@@ -439,20 +438,22 @@ export async function POST(request: NextRequest) {
   try {
     const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
 
-    const transcriptOverride: TranscriptData | undefined =
-      parsed.data.transcript && parsed.data.transcript.videoId === videoId
-        ? {
-            videoId,
-            rawTranscript: parsed.data.transcript.rawTranscript,
-            transcriptLanguage: parsed.data.transcript.transcriptLanguage
-          }
-        : parsed.data.manualTranscript
-          ? {
-              videoId,
-              rawTranscript: parsed.data.manualTranscript,
-              transcriptLanguage: "manual"
-            }
-          : undefined;
+    // 🛠️ SAFE PARSING CONTEXT: Accept the raw transcript payload reliably if provided
+    let transcriptOverride: TranscriptData | undefined = undefined;
+
+    if (parsed.data.transcript && parsed.data.transcript.rawTranscript) {
+      transcriptOverride = {
+        videoId: videoId, // Force use of clean server-validated key layout
+        rawTranscript: parsed.data.transcript.rawTranscript,
+        transcriptLanguage: parsed.data.transcript.transcriptLanguage || "en"
+      };
+    } else if (parsed.data.manualTranscript) {
+      transcriptOverride = {
+        videoId,
+        rawTranscript: parsed.data.manualTranscript,
+        transcriptLanguage: "manual"
+      };
+    }
 
     if (shouldProcessInline()) {
       const video = await runProcessing(parsed.data.videoUrl, user.id, transcriptOverride);
