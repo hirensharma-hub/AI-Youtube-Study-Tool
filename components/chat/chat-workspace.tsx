@@ -399,11 +399,18 @@ export function LearningWorkspace({
       detail: "Bypassing restrictions and securing subtitles safely...",
       progress: 10
     });
+    
     try {
-      // 1. Force the fetch to use the absolute window origin to bypass sub-page routing conflicts
       const targetUrl = typeof window !== "undefined" 
         ? `${window.location.origin}/api/transcript` 
         : "/api/transcript";
+
+      // 🛠️ FRONTEND DIAGNOSTIC LOGS
+      console.log("=== TRANSCRIPT DEBUG START ===");
+      console.log("1. Full Target URL:", targetUrl);
+      console.log("2. Payload Being Sent:", { videoUrl: trimmedUrl });
+      console.log("3. Current Browser Origin:", window.location.origin);
+      console.log("4. Current Page Path:", window.location.pathname);
 
       const transcriptResponse = await fetch(targetUrl, {
         method: "POST",
@@ -411,18 +418,14 @@ export function LearningWorkspace({
         body: JSON.stringify({ videoUrl: trimmedUrl })
       });
 
+      console.log("5. Server Raw Response Status:", transcriptResponse.status);
+      console.log("6. Server Response OK?:", transcriptResponse.ok);
+      console.log("=== TRANSCRIPT DEBUG END ===");
+
       if (!transcriptResponse.ok) {
         const err = await transcriptResponse.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to extract transcript.");
-      }
-
-      const transcriptData = await transcriptResponse.json();
-
-      // Extract video ID safely to connect packages
-      const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
-      const videoId = match ? match[1] : null;
-      if (!videoId) {
-        throw new Error("Invalid YouTube URL format.");
+        console.error("❌ Transcript Error Payload:", err);
+        throw new Error(err.error || `Failed to extract transcript (Status: ${transcriptResponse.status})`);
       }
 
       const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
