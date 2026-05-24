@@ -1,6 +1,5 @@
 "use client";
 
-import { fetchTranscriptClient } from "@/utils/fetchTranscriptClient";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
@@ -396,23 +395,12 @@ export function LearningWorkspace({
     setProcessingState(null);
 
     try {
-      const transcriptData = await fetchTranscriptClient(trimmedUrl);
-
-      if (!transcriptData) {
-        throw new Error("No transcript available");
-      }
-
+      // Streamlined: Offload the entire transcript parsing to the server route
+      // to keep Vercel datacenter IPs behind safe proxies/caches.
       const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoUrl: trimmedUrl,
-          transcript: {
-            videoId: transcriptData.videoId,
-            rawTranscript: transcriptData.text,
-            transcriptLanguage: transcriptData.language
-          }
-        })
+        body: JSON.stringify({ videoUrl: trimmedUrl })
       });
 
       if (!processedResponse.ok) {
@@ -729,6 +717,30 @@ export function LearningWorkspace({
       setAsking(false);
     }
   }
+
+  async function handleSaveSettings() {
+    setSavingSettings(true);
+    setError("");
+
+    try {
+      const data = await getJson<{ settings: UserSettings }>(
+        "/api/save-settings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(settingsDraft)
+        }
+      );
+
+      setSettings(data.settings);
+      setSettingsOpen(false);
+    } catch (err) {
+      setError("Unable to save settings.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   return (
     <main className="workspace">
       <header className="workspace-header">
@@ -1371,27 +1383,4 @@ export function LearningWorkspace({
       ) : null}
     </main>
   );
-
-async function handleSaveSettings() {
-  setSavingSettings(true);
-  setError("");
-
-  try {
-    const data = await getJson<{ settings: UserSettings }>(
-      "/api/save-settings",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settingsDraft)
-      }
-    );
-
-    setSettings(data.settings);
-    setSettingsOpen(false);
-  } catch (err) {
-    setError("Unable to save settings.");
-  } finally {
-    setSavingSettings(false);
-  }
-}
 }
