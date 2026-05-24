@@ -1394,3 +1394,4 @@ async function handleSaveSettings() {
     setSavingSettings(false);
   }
 }
+}
