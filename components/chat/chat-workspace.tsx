@@ -396,31 +396,63 @@ export function LearningWorkspace({
     setProcessingState({
       taskId: "init",
       stage: "transcript",
-      detail: "Initializing backend secure pipeline to extract subtitles...",
-      progress: 15
+      detail: "Bypassing restrictions and securing subtitles safely...",
+      progress: 10
     });
     
     try {
-      // 1. Extract video ID safely
+      const targetUrl = typeof window !== "undefined" 
+        ? `${window.location.origin}/api/transcript` 
+        : "/api/transcript";
+
+      const transcriptResponse = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl: trimmedUrl })
+      });
+
+      if (!transcriptResponse.ok) {
+        const err = await transcriptResponse.json().catch(() => ({}));
+        throw new Error(err.error || `Failed to extract transcript (Status: ${transcriptResponse.status})`);
+      }
+
+      const transcriptData = await transcriptResponse.json();
+
+      if (!transcriptData || !transcriptData.subtitles) {
+        throw new Error(transcriptData?.error || "The server returned data, but no subtitles array was found.");
+      }
+
       const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
       const videoId = match ? match[1] : null;
       if (!videoId) {
         throw new Error("Invalid YouTube URL format.");
       }
 
-      // 2. Offload extraction completely to server runtime to execute safely without CORS roadblocks
+      const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
+
+      setProcessingState({
+        taskId: "init",
+        stage: "notes",
+        detail: "Transcript secured! Triggering AI background orchestration pipeline...",
+        progress: 30
+      });
+
       const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoUrl: trimmedUrl,
-          videoId: videoId // Send along the extracted videoId for safety
+          transcript: {
+            videoId: videoId,
+            rawTranscript: fullTranscriptText,
+            transcriptLanguage: "en"
+          }
         })
       });
 
       if (!processedResponse.ok) {
         const err = await processedResponse.json().catch(() => ({}));
-        throw new Error(err.error || "The processing pipeline rejected this video or failed to pull subtitles.");
+        throw new Error(err.error || "Processing pipeline initialization failed.");
       }
 
       const initialResult = await processedResponse.json();
@@ -565,7 +597,7 @@ export function LearningWorkspace({
       }));
     } catch (err) {
       setError("Unable to grade this answer.");
-    } finally {
+    } Platform finally {
       setGradingQuiz(false);
     }
   }
@@ -847,43 +879,16 @@ export function LearningWorkspace({
               </div>
             </div>
             <div className="learning-status-steps">
-              <span
-                className={
-                  processingState?.stage === "transcript"
-                    ? "is-active"
-                    : ""
-                }
-              >
+              <span className={processingState?.stage === "transcript" ? "is-active" : ""}>
                 Transcript
               </span>
-              <span
-                className={
-                  processingState?.stage === "cleaning" ||
-                  processingState?.stage === "notes"
-                    ? "is-active"
-                    : ""
-                }
-              >
+              <span className={processingState?.stage === "cleaning" || processingState?.stage === "notes" ? "is-active" : ""}>
                 Notes
               </span>
-              <span
-                className={
-                  processingState?.stage === "mcq" ||
-                  processingState?.stage === "written"
-                    ? "is-active"
-                    : ""
-                }
-              >
+              <span className={processingState?.stage === "mcq" || processingState?.stage === "written" ? "is-active" : ""}>
                 Quiz
               </span>
-              <span
-                className={
-                  processingState?.stage === "saving" ||
-                  processingState?.stage === "completed"
-                    ? "is-active"
-                    : ""
-                }
-              >
+              <span className={processingState?.stage === "saving" || processingState?.stage === "completed" ? "is-active" : ""}>
                 Finalizing
               </span>
             </div>
@@ -1278,7 +1283,7 @@ export function LearningWorkspace({
               </div>
               <div className="learning-empty-preview">
                 <div className="learning-empty-preview-card">
-                  <strong>Notes</strong>
+                  Open<strong>Notes</strong>
                   <span className="muted">
                     Readable revision sections with clear takeaways
                   </span>
