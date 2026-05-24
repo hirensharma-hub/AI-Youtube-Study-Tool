@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     });
     const noteContext = prepareTranscriptForModel(processedVideo.notes, 5000);
 
-    const answer = await generateChatCompletion({
+    const answerText = await generateChatCompletion({
       endpoint: env.aiApiUrl,
       model: settings.model,
       accessToken: env.aiToken,
@@ -70,7 +70,15 @@ export async function POST(request: NextRequest) {
       ]
     });
 
-    return NextResponse.json({ answer });
+    // ⭐ FIXED: Package the generated text into the structured object shape the client expects
+    const message = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: answerText,
+      createdAt: new Date().toISOString()
+    };
+
+    return NextResponse.json({ message });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Unable to answer this question.", 500);
   }
