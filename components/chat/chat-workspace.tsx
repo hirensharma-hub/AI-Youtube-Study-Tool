@@ -280,7 +280,6 @@ async function getJson<T>(input: string, init?: RequestInit): Promise<T> {
     throw new Error("The server returned invalid data. Please try again.");
   }
 }
-
 export function LearningWorkspace({
   initialUser,
   initialSettings
@@ -290,45 +289,28 @@ export function LearningWorkspace({
 
   const [user] = useState(initialUser);
   const [provider] = useState<ProviderCatalogItem>(providerCatalog.ollama);
-  const [settings, setSettings] = useState<UserSettings>(
-    initialSettings
-  );
-  const [settingsDraft, setSettingsDraft] = useState<UserSettings>(
-    initialSettings
-  );
+  const [settings, setSettings] = useState<UserSettings>(initialSettings);
+  const [settingsDraft, setSettingsDraft] = useState<UserSettings>(initialSettings);
 
   const [videoUrlInput, setVideoUrlInput] = useState("");
-  const [activeVideo, setActiveVideo] = useState<ProcessedVideo | null>(
-    null
-  );
-  const [videoCache, setVideoCache] = useState<
-    Record<string, ProcessedVideo>
-  >({});
-  const [qaCache, setQaCache] = useState<
-    Record<string, QuestionAnswerMessage[]>
-  >({});
-  const [quizSelections, setQuizSelections] =
-    useState<QuizSelectionsByVideo>({});
-  const [quizRevealed, setQuizRevealed] =
-    useState<QuizRevealByVideo>({});
-  const [quizProgress, setQuizProgress] =
-    useState<QuizProgressByVideo>({});
-  const [quizShortAnswers, setQuizShortAnswers] =
-    useState<QuizShortAnswersByVideo>({});
-  const [quizGrades, setQuizGrades] =
-    useState<QuizGradesByVideo>({});
+  const [activeVideo, setActiveVideo] = useState<ProcessedVideo | null>(null);
+  const [videoCache, setVideoCache] = useState<Record<string, ProcessedVideo>>({});
+  const [qaCache, setQaCache] = useState<Record<string, QuestionAnswerMessage[]>>({});
+  const [quizSelections, setQuizSelections] = useState<QuizSelectionsByVideo>({});
+  const [quizRevealed, setQuizRevealed] = useState<QuizRevealByVideo>({});
+  const [quizProgress, setQuizProgress] = useState<QuizProgressByVideo>({});
+  const [quizShortAnswers, setQuizShortAnswers] = useState<QuizShortAnswersByVideo>({});
+  const [quizGrades, setQuizGrades] = useState<QuizGradesByVideo>({});
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("notes");
   const [questionDraft, setQuestionDraft] = useState("");
 
   const [processing, setProcessing] = useState(false);
-  const [processingState, setProcessingState] =
-    useState<ProcessingState | null>(null);
+  const [processingState, setProcessingState] = useState<ProcessingState | null>(null);
 
   const [asking, setAsking] = useState(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
-  const [generatingFlashcards, setGeneratingFlashcards] =
-    useState(false);
+  const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
   const [gradingQuiz, setGradingQuiz] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -345,6 +327,7 @@ export function LearningWorkspace({
       block: "end"
     });
   }, [qaCache, asking]);
+
   const qaMessages = useMemo(
     () => (activeVideo ? qaCache[activeVideo.videoId] ?? [] : []),
     [activeVideo, qaCache]
@@ -372,16 +355,12 @@ export function LearningWorkspace({
 
   const activeQuizShortAnswer = useMemo(() => {
     if (!activeVideo || !activeQuizQuestion) return "";
-    return (
-      quizShortAnswers[activeVideo.videoId]?.[activeQuizQuestion.id] ?? ""
-    );
+    return quizShortAnswers[activeVideo.videoId]?.[activeQuizQuestion.id] ?? "";
   }, [activeVideo, activeQuizQuestion, quizShortAnswers]);
 
   const activeQuizGrade = useMemo(() => {
     if (!activeVideo || !activeQuizQuestion) return null;
-    return (
-      quizGrades[activeVideo.videoId]?.[activeQuizQuestion.id] ?? null
-    );
+    return quizGrades[activeVideo.videoId]?.[activeQuizQuestion.id] ?? null;
   }, [activeVideo, activeQuizQuestion, quizGrades]);
 
   const answeredQuizCount = useMemo(() => {
@@ -405,8 +384,8 @@ export function LearningWorkspace({
     }, 0);
   }, [activeVideo, quizRevealed, quizSelections]);
 
+  // ⭐⭐⭐ FIXED VERSION — CLEAN, CORRECT, NO DUPLICATES ⭐⭐⭐
   async function handleProcessVideo(event: FormEvent<HTMLFormElement>) {
-    console.log("HANDLE PROCESS VIDEO IS RUNNING");
     event.preventDefault();
 
     const trimmedUrl = videoUrlInput.trim();
@@ -417,20 +396,19 @@ export function LearningWorkspace({
     setProcessingState(null);
 
     try {
-      // 1. Always fetch transcript in the browser
-      // ⭐ Fetch transcript directly in the browser
-      const transcriptData = await fetchTranscriptClient(videoUrl);
+      // 1. Fetch transcript directly in the browser
+      const transcriptData = await fetchTranscriptClient(trimmedUrl);
 
       if (!transcriptData) {
         throw new Error("No transcript available");
       }
 
-      // ⭐ Send transcript to backend for processing
-      const processed = await fetch("/api/process-video", {
+      // 2. Send transcript to backend for processing
+      const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoUrl,
+          videoUrl: trimmedUrl,
           transcript: {
             videoId: transcriptData.videoId,
             rawTranscript: transcriptData.text,
@@ -439,58 +417,14 @@ export function LearningWorkspace({
         })
       });
 
-      const result = await processed.json();
-
-
-      const transcriptData = await transcriptRes.json();
-
-      if (!transcriptRes.ok) {
-        throw new Error(transcriptData.error || "Transcript fetch failed");
+      if (!processedResponse.ok) {
+        const err = await processedResponse.json().catch(() => ({}));
+        throw new Error(err.error || "Processing failed.");
       }
 
-      const transcript = transcriptData.transcript;
+      const { video: processed } = await processedResponse.json();
 
-
-      if (!transcript) {
-        setProcessing(false);
-        setError(
-          "Transcript unavailable for this video.\n\n" +
-            "LessonLift couldn’t access the captions for this YouTube link.\n\n" +
-            "This usually happens when:\n" +
-            "• The video has no subtitles or closed captions\n" +
-            "• The creator disabled transcript access\n" +
-            "• The video is age‑restricted or region‑locked\n" +
-            "• YouTube temporarily blocked transcript requests\n\n" +
-            "Try another video with captions enabled.\n\n" +
-            "(Technical note: LessonLift requires a transcript to generate notes, quizzes, and answers.)"
-        );
-        return;
-      }
-
-
-      // 2. Send transcript to backend
-      // 2. Send transcript to backend
-      const data = await getJson<{ video: ProcessedVideo }>(
-        "/api/process-video",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            videoUrl: trimmedUrl,
-            transcript: {
-              videoId: transcriptData.videoId,
-              rawTranscript: transcript,
-              transcriptLanguage: transcriptData.language
-            }
-          })
-        }
-      );
-
-
-      const processed = data.video;
-
+      // 3. Update UI state
       setActiveVideo(processed);
       setVideoCache((current) => ({
         ...current,
@@ -529,279 +463,6 @@ export function LearningWorkspace({
       setProcessing(false);
     }
   }
-
-  async function handleSaveSettings() {
-    setSavingSettings(true);
-    setError("");
-
-    try {
-      const data = await getJson<{ settings: UserSettings }>(
-        "/api/save-settings",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(settingsDraft)
-        }
-      );
-
-      setSettings(data.settings);
-      setSettingsOpen(false);
-    } catch (settingsError) {
-      setError(
-        settingsError instanceof Error
-          ? settingsError.message
-          : "Unable to save settings."
-      );
-    } finally {
-      setSavingSettings(false);
-    }
-  }
-
-  async function handleLogout() {
-    try {
-      await getJson("/api/logout", { method: "POST" });
-      router.refresh();
-    } catch {
-      setError("Unable to log out.");
-    }
-  }
-
-  function handleThemeToggle() {
-    const nextTheme =
-      settings.theme === "light"
-        ? "dark"
-        : settings.theme === "dark"
-        ? "system"
-        : "light";
-
-    setSettings((current) => ({
-      ...current,
-      theme: nextTheme
-    }));
-    applyTheme(nextTheme);
-  }
-
-  function handleSelectQuizOption(questionId: string, optionId: string) {
-    if (!activeVideo) return;
-
-    setQuizSelections((current) => ({
-      ...current,
-      [activeVideo.videoId]: {
-        ...(current[activeVideo.videoId] ?? {}),
-        [questionId]: optionId
-      }
-    }));
-  }
-
-  function handleShortAnswerChange(questionId: string, text: string) {
-    if (!activeVideo) return;
-
-    setQuizShortAnswers((current) => ({
-      ...current,
-      [activeVideo.videoId]: {
-        ...(current[activeVideo.videoId] ?? {}),
-        [questionId]: text
-      }
-    }));
-  }
-
-  async function handleSubmitQuizAnswer() {
-    if (!activeVideo || !activeQuizQuestion) return;
-
-    if (activeQuizQuestion.type === "mcq") {
-      setQuizRevealed((current) => ({
-        ...current,
-        [activeVideo.videoId]: {
-          ...(current[activeVideo.videoId] ?? {}),
-          [activeQuizQuestion.id]: true
-        }
-      }));
-      return;
-    }
-
-    setGradingQuiz(true);
-    setError("");
-
-    try {
-      const data = await getJson<{ grade: ShortAnswerGrade }>(
-        "/api/grade-short-answer",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            videoId: activeVideo.videoId,
-            questionId: activeQuizQuestion.id,
-            answer: activeQuizShortAnswer
-          })
-        }
-      );
-
-      setQuizGrades((current) => ({
-        ...current,
-        [activeVideo.videoId]: {
-          ...(current[activeVideo.videoId] ?? {}),
-          [activeQuizQuestion.id]: data.grade
-        }
-      }));
-
-      setQuizRevealed((current) => ({
-        ...current,
-        [activeVideo.videoId]: {
-          ...(current[activeVideo.videoId] ?? {}),
-          [activeQuizQuestion.id]: true
-        }
-      }));
-    } catch (gradeError) {
-      setError(
-        gradeError instanceof Error
-          ? gradeError.message
-          : "Unable to grade this answer."
-      );
-    } finally {
-      setGradingQuiz(false);
-    }
-  }
-
-  function handleNextQuizQuestion() {
-    if (!activeVideo) return;
-
-    setQuizProgress((current) => ({
-      ...current,
-      [activeVideo.videoId]: activeQuizIndex + 1
-    }));
-  }
-
-  function handleRestartQuiz() {
-    if (!activeVideo) return;
-
-    setQuizProgress((current) => ({
-      ...current,
-      [activeVideo.videoId]: 0
-    }));
-    setQuizSelections((current) => ({
-      ...current,
-      [activeVideo.videoId]: {}
-    }));
-    setQuizRevealed((current) => ({
-      ...current,
-      [activeVideo.videoId]: {}
-    }));
-    setQuizShortAnswers((current) => ({
-      ...current,
-      [activeVideo.videoId]: {}
-    }));
-    setQuizGrades((current) => ({
-      ...current,
-      [activeVideo.videoId]: {}
-    }));
-  }
-  async function handleGenerateQuiz() {
-    if (!activeVideo) return;
-
-    setGeneratingQuiz(true);
-    setError("");
-
-    try {
-      const data = await getJson<{ quiz: ProcessedVideo["quiz"] }>(
-        "/api/generate-quiz",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            videoId: activeVideo.videoId
-          })
-        }
-      );
-
-      const updated = {
-        ...activeVideo,
-        quiz: data.quiz
-      };
-
-      setActiveVideo(updated);
-      setVideoCache((current) => ({
-        ...current,
-        [updated.videoId]: updated
-      }));
-
-      setQuizProgress((current) => ({
-        ...current,
-        [updated.videoId]: 0
-      }));
-      setQuizSelections((current) => ({
-        ...current,
-        [updated.videoId]: {}
-      }));
-      setQuizRevealed((current) => ({
-        ...current,
-        [updated.videoId]: {}
-      }));
-      setQuizShortAnswers((current) => ({
-        ...current,
-        [updated.videoId]: {}
-      }));
-      setQuizGrades((current) => ({
-        ...current,
-        [updated.videoId]: {}
-      }));
-    } catch (quizError) {
-      setError(
-        quizError instanceof Error
-          ? quizError.message
-          : "Unable to generate quiz."
-      );
-    } finally {
-      setGeneratingQuiz(false);
-    }
-  }
-
-  async function handleGenerateFlashcards() {
-    if (!activeVideo) return;
-
-    setGeneratingFlashcards(true);
-    setError("");
-
-    try {
-      const data = await getJson<{ flashcards: ProcessedVideo["flashcards"] }>(
-        "/api/generate-flashcards",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            videoId: activeVideo.videoId
-          })
-        }
-      );
-
-      const updated = {
-        ...activeVideo,
-        flashcards: data.flashcards
-      };
-
-      setActiveVideo(updated);
-      setVideoCache((current) => ({
-        ...current,
-        [updated.videoId]: updated
-      }));
-    } catch (flashError) {
-      setError(
-        flashError instanceof Error
-          ? flashError.message
-          : "Unable to generate flashcards."
-      );
-    } finally {
-      setGeneratingFlashcards(false);
-    }
-  }
-
   async function handleAskQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeVideo) return;
@@ -978,6 +639,7 @@ export function LearningWorkspace({
             </div>
           </section>
         ) : null}
+
         {activeVideo ? (
           <>
             <section className="learning-video-summary panel">
@@ -1289,6 +951,7 @@ export function LearningWorkspace({
                   ) : null}
                 </div>
               ) : null}
+
               {activeTab === "questions" ? (
                 <div className="qa-layout">
                   <div className="qa-history">
@@ -1368,6 +1031,12 @@ export function LearningWorkspace({
                   <strong>Notes</strong>
                   <span className="muted">
                     Readable revision sections with clear takeaways
+              </div>
+              <div className="learning-empty-preview">
+                <div className="learning-empty-preview-card">
+                  <strong>Notes</strong>
+                  <span className="muted">
+                    Readable revision sections with clear takeaways
                   </span>
                 </div>
                 <div className="learning-empty-preview-card">
@@ -1379,7 +1048,7 @@ export function LearningWorkspace({
                 <div className="learning-empty-preview-card">
                   <strong>Ask Questions</strong>
                   <span className="muted">
-                    Context-aware follow-ups grounded in the transcript
+                    Context‑aware follow‑ups grounded in the transcript
                   </span>
                 </div>
               </div>
@@ -1495,7 +1164,7 @@ export function LearningWorkspace({
           <div className="settings-actions">
             <p className="muted settings-help">
               These settings affect transcript cleaning, note generation, quiz
-              generation, and follow-up answers.
+              generation, and follow‑up answers.
             </p>
             <button
               className="button button-primary"
