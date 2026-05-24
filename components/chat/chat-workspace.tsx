@@ -418,11 +418,29 @@ export function LearningWorkspace({
 
     try {
       // 1. Always fetch transcript in the browser
-      const transcriptRes = await fetch("/api/transcript", {
+      // ⭐ Fetch transcript directly in the browser
+      const transcriptData = await fetchTranscriptClient(videoUrl);
+
+      if (!transcriptData) {
+        throw new Error("No transcript available");
+      }
+
+      // ⭐ Send transcript to backend for processing
+      const processed = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoUrl: trimmedUrl }),
+        body: JSON.stringify({
+          videoUrl,
+          transcript: {
+            videoId: transcriptData.videoId,
+            rawTranscript: transcriptData.text,
+            transcriptLanguage: transcriptData.language
+          }
+        })
       });
+
+      const result = await processed.json();
+
 
       const transcriptData = await transcriptRes.json();
 
