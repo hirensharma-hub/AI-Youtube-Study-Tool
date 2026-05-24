@@ -21,6 +21,7 @@ import {
 } from "@/lib/web-verify";
 import { extractYouTubeVideoId } from "@/lib/youtube";
 
+// Explicitly define schema constraints matching client payload
 const processSchema = z.object({
   videoUrl: z.string().trim().url(),
   manualTranscript: z.string().trim().min(1).optional(),
@@ -255,11 +256,10 @@ async function runProcessing(
 
   onProgress?.({
     stage: "transcript",
-    detail: transcriptOverride ? "Using the browser transcript" : "No transcript provided",
+    detail: transcriptOverride ? "Verifying data stream structure..." : "Parsing transcript block",
     progress: 8
   });
 
-  // ⭐ KEY CHANGE: we now REQUIRE a transcript from the client
   if (!transcriptOverride) {
     throw new Error("No transcript provided. Please fetch the transcript in the browser first.");
   }
@@ -392,7 +392,7 @@ function updateTaskProgress(taskId: string, state: Omit<ProcessTaskState, "statu
 }
 
 function shouldProcessInline() {
-  return process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+  return process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production";
 }
 
 export async function GET(request: NextRequest) {
