@@ -7,10 +7,11 @@ import { env } from "@/lib/env";
 import { getProcessedVideoByVideoId, getUserSettings } from "@/lib/server-data";
 import { ShortAnswerGrade } from "@/types";
 
+// ⭐ FIXED: Changed property name from studentAnswer to answer to align with frontend payload
 const gradeSchema = z.object({
   videoId: z.string().trim().min(6).max(32),
   questionId: z.string().trim().min(1).max(120),
-  studentAnswer: z.string().trim().min(1).max(6000)
+  answer: z.string().trim().min(1).max(6000)
 });
 
 function normalizeGrade(payload: unknown, totalMarks: number, fallbackPoints: Array<{ id: string; label: string; marks: number }>): ShortAnswerGrade {
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
             `Model answer:\n${question.answer}\n\n` +
             `Mark scheme:\n${JSON.stringify(question.markScheme ?? [])}\n\n` +
             `Transcript context:\n${processedVideo.cleanedTranscript}\n\n` +
-            `Student answer:\n${parsed.data.studentAnswer}\n\n` +
+            `Student answer:\n${parsed.data.answer}\n\n` + // ⭐ FIXED: Now safely maps to parsed.data.answer
             `Rules:\n` +
             `- Award marks point by point using the supplied mark scheme only.\n` +
             `- If a point is repeated, do not award it twice.\n` +
