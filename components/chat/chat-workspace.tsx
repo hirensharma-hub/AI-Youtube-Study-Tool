@@ -462,7 +462,7 @@ export function LearningWorkspace({
     } finally {
       setProcessing(false);
     }
-  }
+  
   async function handleAskQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeVideo) return;
