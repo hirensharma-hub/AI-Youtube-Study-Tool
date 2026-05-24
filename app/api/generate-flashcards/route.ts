@@ -35,8 +35,9 @@ export async function POST(request: NextRequest) {
     return apiError("Process the video first before generating flashcards.", 404);
   }
 
-  if (processedVideo.flashcards.length) {
-    return NextResponse.json({ video: processedVideo, cached: true });
+  // ⭐ FIXED: Match frontend expectations when serving cached data
+  if (processedVideo.flashcards && processedVideo.flashcards.length > 0) {
+    return NextResponse.json({ flashcards: processedVideo.flashcards, cached: true });
   }
 
   try {
@@ -57,7 +58,8 @@ export async function POST(request: NextRequest) {
       throw new Error("The flashcards were generated but the lesson could not be updated.");
     }
 
-    return NextResponse.json({ video: updatedVideo, cached: false });
+    // ⭐ FIXED: Extract and return flashcards directly to bind perfectly to the workspace view
+    return NextResponse.json({ flashcards: updatedVideo.flashcards, cached: false });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Unable to generate flashcards right now.", 500);
   }
