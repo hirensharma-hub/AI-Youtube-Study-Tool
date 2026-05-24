@@ -396,7 +396,7 @@ export function LearningWorkspace({
     setProcessingState({
       taskId: "init",
       stage: "transcript",
-      detail: "Bypassing restrictions and securing subtitles safely...",
+      detail: "Routing through open data gateways to secure subtitles...",
       progress: 10
     });
     
@@ -408,25 +408,22 @@ export function LearningWorkspace({
         throw new Error("Invalid YouTube URL format.");
       }
 
-      // 2. CLIENT-SIDE EXTRACTION: Fetch from open public gateways directly via browser
-      const publicInstances = [
+      // 2. CORS-BYPASS ENGINE: Wrap targets using a proxy gateway to bypass origin security blocks
+      const targetUrls = [
         `https://pipedapi.kavin.rocks/streams/${videoId}`,
-        `https://pipedapi.syncpundit.io/streams/${videoId}`,
         `https://pipedapi.adminforge.de/streams/${videoId}`
       ];
 
       let subtitles: any[] | null = null;
-      let successUrl = "";
 
-      for (const url of publicInstances) {
+      for (const target of targetUrls) {
         try {
-          console.log(`Trying extraction source: ${url}`);
+          console.log(`Trying extraction source via CORS gateway: ${target}`);
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 6000); // 6-second timeout per source
+          const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-          const res = await fetch(url, { 
-            signal: controller.signal,
-            headers: { "Accept": "application/json" }
+          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(target)}`, { 
+            signal: controller.signal
           });
           clearTimeout(timeoutId);
 
@@ -436,7 +433,7 @@ export function LearningWorkspace({
               const trackTarget = data.subtitles.find((s: any) => s.code?.startsWith("en")) || data.subtitles[0];
               
               if (trackTarget && trackTarget.url) {
-                const vttRes = await fetch(trackTarget.url);
+                const vttRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(trackTarget.url)}`);
                 if (vttRes.ok) {
                   const vttText = await vttRes.text();
                   const items: any[] = [];
@@ -459,7 +456,6 @@ export function LearningWorkspace({
                   }
                   if (items.length > 0) {
                     subtitles = items;
-                    successUrl = url;
                     break;
                   }
                 }
@@ -467,17 +463,12 @@ export function LearningWorkspace({
             }
           }
         } catch (e) {
-          console.warn(`Source failed or timed out: ${url}`, e);
+          console.warn(`Gateway route rejected or timed out for target: ${target}`, e);
         }
       }
 
-      // Fallback fallback data generator if proxies fail to resolve
       if (!subtitles || subtitles.length === 0) {
-        console.log("Gateways saturated, generating baseline transcript summary.");
-        subtitles = [
-          { text: "This video's live transcripts are currently being structured.", start: 0, duration: 5 },
-          { text: "Let's begin exploring the core concepts and topics of this tutorial together.", start: 5, duration: 5 }
-        ];
+        throw new Error("All unblocked proxy gateways are currently saturated. Please try another video or try again in a few seconds.");
       }
 
       const fullTranscriptText = subtitles.map((s: any) => s.text).join(" ");
@@ -489,7 +480,7 @@ export function LearningWorkspace({
         progress: 30
       });
 
-      // 2. Forward the transcript data to the process-video endpoint
+      // 3. Forward the transcript data to the process-video endpoint
       const processedResponse = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,20 +500,15 @@ export function LearningWorkspace({
       }
 
       const initialResult = await processedResponse.json();
-
-      // 3. Handle inline processing vs background task polling
       let finalVideoData: ProcessedVideo | null = null;
 
       if (initialResult.done && initialResult.video) {
-        // Handle immediate synchronous returns (local dev / production fallback overrides)
         finalVideoData = initialResult.video;
       } else if (initialResult.taskId) {
-        // Polling loop required for background-orchestrated tasks on production/Vercel
         const currentTaskId = initialResult.taskId;
         let isCompleted = false;
 
         while (!isCompleted) {
-          // Wait 2.5 seconds between polling iterations to prevent blasting the API
           await new Promise((resolve) => setTimeout(resolve, 2500));
 
           const pollResponse = await fetch(`/api/process-video?taskId=${currentTaskId}`);
@@ -539,7 +525,6 @@ export function LearningWorkspace({
           } else if (taskStatus.status === "failed") {
             throw new Error(taskStatus.error || "AI background generation failed.");
           } else {
-            // Keep the user engaged with live progress metrics from the server worker
             setProcessingState({
               taskId: currentTaskId,
               stage: taskStatus.stage || "notes",
@@ -554,7 +539,6 @@ export function LearningWorkspace({
         throw new Error("Pipeline terminated without delivering a valid study pack.");
       }
 
-      // 4. Update UI states seamlessly with the finalized dataset
       setActiveVideo(finalVideoData);
       setVideoCache((current) => ({
         ...current,
