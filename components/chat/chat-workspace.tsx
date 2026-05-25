@@ -597,7 +597,7 @@ export function LearningWorkspace({
       }));
     } catch (err) {
       setError("Unable to grade this answer.");
-    } Platform finally {
+    } finally {
       setGradingQuiz(false);
     }
   }
