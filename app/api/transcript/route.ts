@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-// Fix: Import it as a default module instead of a named structure
 import getSubtitles from "youtube-caption-extractor";
 
 export const runtime = "nodejs"; 
@@ -26,8 +25,11 @@ export async function POST(req: Request) {
     const videoId = match[1];
 
     try {
-      // Execute the default fetch function passing videoId and language parameters
-      const subtitles = await getSubtitles({ videoId, lang: "en" });
+      // Resolve CommonJS mismatch: Check if it's nested under .default or use it directly
+      const fetchFunction: any = (getSubtitles as any).default || getSubtitles;
+      
+      // Execute the extraction tool safely
+      const subtitles = await fetchFunction({ videoId, lang: "en" });
 
       if (!subtitles || subtitles.length === 0) {
         return NextResponse.json(
