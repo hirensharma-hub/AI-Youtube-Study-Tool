@@ -22,11 +22,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid YouTube URL format" }, { status: 400 });
     }
 
-    const videoId = match[1];
+    const currentVideoId = match[1];
 
     try {
-      // Direct extraction request using correct package syntax binding
-      const subtitles = await getSubtitles({ videoId, lang: "en" });
+      // Fix: Use the correct parameter structure options: videoID with capital ID
+      const subtitles = await getSubtitles({ videoID: currentVideoId, lang: "en" });
 
       if (!subtitles || subtitles.length === 0) {
         throw new Error("No captions returned");
@@ -44,16 +44,16 @@ export async function POST(req: Request) {
       console.warn("Primary scraper blocked or failed, attempting serverless mirror fallback...");
 
       try {
-        // FALLBACK: Use a public CORS proxy layout to obscure your Oracle VPS IP signature
+        // FALLBACK: Route through a proxy setup to shield the Oracle VPS IP footprint
         const fallbackUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(
-          `https://youtube.com/watch?v=${videoId}`
+          `https://youtube.com/watch?v=${currentVideoId}`
         )}`;
         
         const res = await fetch(fallbackUrl);
         const data = await res.json();
         const html = data.contents;
 
-        // Scrape caption tracks regex pattern straight out of YouTube's embedded watch player page asset
+        // Extract tracking arrays straight out of the underlying watch page layout data strings
         const regex = /"captionTracks":\s*(\[.*?\])/;
         const parsedMatch = html.match(regex);
 
@@ -68,12 +68,11 @@ export async function POST(req: Request) {
           throw new Error("Target transcript translation data track is empty.");
         }
 
-        // Pull down the transcript data via proxy wrapper directly
+        // Fetch translation string context
         const xmlRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(englishTrack.baseUrl)}`);
         const xmlData = await xmlRes.json();
         const xmlHtml = xmlData.contents;
 
-        // Parse XML segment blocks cleanly using a regex pattern instead of bulky XML-parser nodes
         const textRegex = /<text start="([\d.]+)" dur="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/g;
         const fallbackSubtitles: any[] = [];
         let itemMatch;
@@ -106,7 +105,7 @@ export async function POST(req: Request) {
       }
     }
   } catch (err) {
-    return NextResponse.json({ error: "Internal server compilation error pipeline loop." }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error execution pipeline loop." }, { status: 500 });
   }
 }
 
