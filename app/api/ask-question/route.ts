@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { buildRelevantTranscriptContext, generateChatCompletion, prepareTranscriptForModel } from "@/lib/ai";
-import { apiError, parseJsonBody, requireApiUser } from "@/lib/api";
-import { env } from "@/lib/env";
-import { getProcessedVideoByVideoId, getUserSettings } from "@/lib/server-data";
+import { buildRelevantTranscriptContext, generateChatCompletion, prepareTranscriptForModel } from "../../../lib/ai";
+import { apiError, parseJsonBody, requireApiUser } from "../../../lib/api";
+import { env } from "../../../lib/env";
+import { getProcessedVideoByVideoId, getUserSettings } from "../../../lib/server-data";
 
 const askSchema = z.object({
   videoId: z.string().trim().min(6).max(32),
