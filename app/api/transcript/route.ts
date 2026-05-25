@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { fetchCaptions } from "youtube-caption-extractor";
+// Fix: Import it as a default module instead of a named structure
+import getSubtitles from "youtube-caption-extractor";
 
 export const runtime = "nodejs"; 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing videoUrl" }, { status: 400 });
     }
 
-    // Extract the Video ID
+    // Extract the Video ID cleanly
     const match =
       videoUrl.match(/v=([^&]+)/) ||
       videoUrl.match(/youtu\.be\/([^?&]+)/);
@@ -25,8 +26,8 @@ export async function POST(req: Request) {
     const videoId = match[1];
 
     try {
-      // Fetch captions using the explicit caption extractor (uses subtitle tracks directly)
-      const subtitles = await fetchCaptions({ videoId, lang: "en" });
+      // Execute the default fetch function passing videoId and language parameters
+      const subtitles = await getSubtitles({ videoId, lang: "en" });
 
       if (!subtitles || subtitles.length === 0) {
         return NextResponse.json(
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Standardize the structure for your frontend layout map
+      // Standardize the data mapping array back to your application format layout
       const normalizedSubtitles = subtitles.map((item: any) => ({
         text: String(item.text || ""),
         start: Number(item.start || 0),
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
       );
 
     } catch (e) {
-      console.error("Caption extraction tracking node failed:", String(e));
+      console.error("Caption extraction error context:", String(e));
       return NextResponse.json(
         { error: "YouTube security rules rejected the raw cloud instance scrape. Try again with a different video link." },
         { status: 500 }
