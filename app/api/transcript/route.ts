@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { YoutubeTranscript } from "youtube-transcript";
 
 export const runtime = "nodejs"; 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing videoUrl" }, { status: 400 });
     }
 
+    // Extract the Video ID
     const match =
       videoUrl.match(/v=([^&]+)/) ||
       videoUrl.match(/youtu\.be\/([^?&]+)/);
@@ -21,61 +23,38 @@ export async function POST(req: Request) {
     }
 
     const videoId = match[1];
-    let subtitles: any[] | null = null;
-    let workingMethod = "";
+    let subtitles: any[] = [];
 
-    // ULTRA-RESILLIENT METHOD: Use a highly available specialized YouTube Subtitle Decrypter API
+    // Extract subtitles DIRECTLY on your Oracle server instance
     try {
-      const res = await fetch(`https://youtube-subtitles-api.onrender.com/transcript?v=${videoId}`, {
-        cache: "no-store"
-      });
-      
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.subtitles && data.subtitles.length > 0) {
-          subtitles = data.subtitles;
-          workingMethod = "subtitles-decrypter-api";
-        }
-      }
+      subtitles = await YoutubeTranscript.fetchTranscript(videoId);
     } catch (e) {
-      console.log("Primary API layer failed:", String(e));
-    }
-
-    // FALLBACK METHOD: Try pulling through an alternative unblocked mirror
-    if (!subtitles) {
-      try {
-        const fallbackRes = await fetch(`https://subtitles-player.vercel.app/api/transcript?v=${videoId}`, {
-          cache: "no-store"
-        });
-        if (fallbackRes.ok) {
-          const data = await fallbackRes.json().catch(() => null);
-          if (data && data.subtitles) {
-            subtitles = data.subtitles;
-            workingMethod = "global-mirror-api";
-          }
-        }
-      } catch (err) {
-        console.log("Fallback mirror failed:", String(err));
-      }
-    }
-
-    // If all extraction nodes are blocked by YouTube
-    if (!subtitles || subtitles.length === 0) {
+      console.error("Direct transcript extraction failed:", String(e));
       return NextResponse.json(
-        { error: "YouTube's rate-limiter is actively blocking this serverless region. Please try again in 30 seconds or try a different video link." },
-        { status: 200 }
+        { 
+          error: "Could not retrieve transcripts natively. The video might lack captions, or YouTube is actively blocking this server's IP address." 
+        },
+        { status: 500 }
       );
     }
 
-    // Standardize structure for the frontend map function
+    // Verify data exists
+    if (!subtitles || subtitles.length === 0) {
+      return NextResponse.json(
+        { error: "No subtitles found for this video." },
+        { status: 400 }
+      );
+    }
+
+    // Standardize structure for your frontend component maps
     const normalizedSubtitles = subtitles.map((item: any) => ({
       text: String(item.text || ""),
       start: Number(item.start || 0),
-      duration: Number(item.duration || item.dur || 2)
+      duration: Number(item.duration || 2)
     }));
 
     return NextResponse.json(
-      { subtitles: normalizedSubtitles, source: workingMethod },
+      { subtitles: normalizedSubtitles, source: "native-server-extractor" },
       { status: 200 }
     );
   } catch (err) {
