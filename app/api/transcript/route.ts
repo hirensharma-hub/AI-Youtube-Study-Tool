@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { YoutubeTranscript } from "youtube-transcript";
+import { Innertube } from "youtubei.js";
 
 export const runtime = "nodejs"; 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing videoUrl" }, { status: 400 });
     }
 
-    // Extract the Video ID
+    // Extract Video ID
     const match =
       videoUrl.match(/v=([^&]+)/) ||
       videoUrl.match(/youtu\.be\/([^?&]+)/);
@@ -23,40 +23,44 @@ export async function POST(req: Request) {
     }
 
     const videoId = match[1];
-    let subtitles: any[] = [];
 
-    // Extract subtitles DIRECTLY on your Oracle server instance
     try {
-      subtitles = await YoutubeTranscript.fetchTranscript(videoId);
-    } catch (e) {
-      console.error("Direct transcript extraction failed:", String(e));
+      // Initialize Innertube (Mimics an official client device handshake to bypass cloud IP blocks)
+      const youtube = await Innertube.create();
+      const videoInfo = await youtube.getInfo(videoId);
+      
+      // Fetch the transcript data structure natively
+      const transcriptData = await videoInfo.getTranscript();
+      
+      // Extract the actual text segments
+      const segments = transcriptData?.transcript?.content?.body?.initial_segments;
+
+      if (!segments || segments.length === 0) {
+        return NextResponse.json(
+          { error: "This video does not have any available transcripts or closed captions." },
+          { status: 400 }
+        );
+      }
+
+      // Standardize the structure for your frontend application layout map
+      const normalizedSubtitles = segments.map((item: any) => ({
+        text: String(item.snippet?.text || item.text || ""),
+        start: Number(item.start_ms ? item.start_ms / 1000 : 0),
+        duration: Number(item.duration_ms ? item.duration_ms / 1000 : 2)
+      }));
+
       return NextResponse.json(
-        { 
-          error: "Could not retrieve transcripts natively. The video might lack captions, or YouTube is actively blocking this server's IP address." 
-        },
+        { subtitles: normalizedSubtitles, source: "youtubei-client-emulation" },
+        { status: 200 }
+      );
+
+    } catch (e) {
+      console.error("Innertube extraction node collapsed:", String(e));
+      return NextResponse.json(
+        { error: "YouTube security protocols rejected the server connection. Please try a different video or try again shortly." },
         { status: 500 }
       );
     }
-
-    // Verify data exists
-    if (!subtitles || subtitles.length === 0) {
-      return NextResponse.json(
-        { error: "No subtitles found for this video." },
-        { status: 400 }
-      );
-    }
-
-    // Standardize structure for your frontend component maps
-    const normalizedSubtitles = subtitles.map((item: any) => ({
-      text: String(item.text || ""),
-      start: Number(item.start || 0),
-      duration: Number(item.duration || 2)
-    }));
-
-    return NextResponse.json(
-      { subtitles: normalizedSubtitles, source: "native-server-extractor" },
-      { status: 200 }
-    );
   } catch (err) {
     return NextResponse.json(
       { error: "Internal server error running transcript processor pipeline." },
