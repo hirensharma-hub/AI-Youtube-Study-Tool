@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Innertube } from "youtubei.js";
+import { fetchCaptions } from "youtube-caption-extractor";
 
 export const runtime = "nodejs"; 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing videoUrl" }, { status: 400 });
     }
 
-    // Extract Video ID
+    // Extract the Video ID
     const match =
       videoUrl.match(/v=([^&]+)/) ||
       videoUrl.match(/youtu\.be\/([^?&]+)/);
@@ -25,39 +25,32 @@ export async function POST(req: Request) {
     const videoId = match[1];
 
     try {
-      // Initialize Innertube (Mimics an official client device handshake to bypass cloud IP blocks)
-      const youtube = await Innertube.create();
-      const videoInfo = await youtube.getInfo(videoId);
-      
-      // Fetch the transcript data structure natively
-      const transcriptData = await videoInfo.getTranscript();
-      
-      // Extract the actual text segments
-      const segments = transcriptData?.transcript?.content?.body?.initial_segments;
+      // Fetch captions using the explicit caption extractor (uses subtitle tracks directly)
+      const subtitles = await fetchCaptions({ videoId, lang: "en" });
 
-      if (!segments || segments.length === 0) {
+      if (!subtitles || subtitles.length === 0) {
         return NextResponse.json(
-          { error: "This video does not have any available transcripts or closed captions." },
+          { error: "No English captions could be retrieved for this video layout." },
           { status: 400 }
         );
       }
 
-      // Standardize the structure for your frontend application layout map
-      const normalizedSubtitles = segments.map((item: any) => ({
-        text: String(item.snippet?.text || item.text || ""),
-        start: Number(item.start_ms ? item.start_ms / 1000 : 0),
-        duration: Number(item.duration_ms ? item.duration_ms / 1000 : 2)
+      // Standardize the structure for your frontend layout map
+      const normalizedSubtitles = subtitles.map((item: any) => ({
+        text: String(item.text || ""),
+        start: Number(item.start || 0),
+        duration: Number(item.dur || item.duration || 2)
       }));
 
       return NextResponse.json(
-        { subtitles: normalizedSubtitles, source: "youtubei-client-emulation" },
+        { subtitles: normalizedSubtitles, source: "caption-track-extractor" },
         { status: 200 }
       );
 
     } catch (e) {
-      console.error("Innertube extraction node collapsed:", String(e));
+      console.error("Caption extraction tracking node failed:", String(e));
       return NextResponse.json(
-        { error: "YouTube security protocols rejected the server connection. Please try a different video or try again shortly." },
+        { error: "YouTube security rules rejected the raw cloud instance scrape. Try again with a different video link." },
         { status: 500 }
       );
     }
