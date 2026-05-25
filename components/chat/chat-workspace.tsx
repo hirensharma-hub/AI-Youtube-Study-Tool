@@ -396,7 +396,7 @@ export function LearningWorkspace({
     setProcessingState({
       taskId: "init",
       stage: "transcript",
-      detail: "Bypassing restrictions and securing subtitles safely...",
+      detail: "Extracting video transcript and preparing summary...",
       progress: 10
     });
     
