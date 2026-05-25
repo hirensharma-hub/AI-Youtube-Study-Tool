@@ -32,7 +32,8 @@ export async function persistSession(token: string) {
     value: token,
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Allows unsecure HTTP testing on your raw IP address if COOKIE_SECURE="false"
+    secure: process.env.COOKIE_SECURE === "false" ? false : true,
     path: "/",
     maxAge: 60 * 60 * 24 * 30
   });
@@ -44,7 +45,8 @@ export function clearSession() {
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Keeps fallback consistency across login and logout endpoints
+    secure: process.env.COOKIE_SECURE === "false" ? false : true,
     path: "/",
     maxAge: 0
   });
