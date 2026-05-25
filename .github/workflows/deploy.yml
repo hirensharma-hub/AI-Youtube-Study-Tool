@@ -1,0 +1,23 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploying via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 144.21.58.122
+          username: opc
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/AI-Youtube-Study-Tool
+            git pull origin main
+            npm install --production
+            npm run build
+            pm2 restart study-tool || pm2 start npm --name "study-tool" -- run start
