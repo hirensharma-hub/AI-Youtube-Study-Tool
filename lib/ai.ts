@@ -1,7 +1,7 @@
 import { QuizQuestion } from "@/types";
 
-const PRIMARY_OLLAMA_CLOUD_MODEL = "deepseek-v3.1:671b-cloud";
-const FALLBACK_OLLAMA_CLOUD_MODEL = "gpt-oss:120b-cloud";
+const PRIMARY_OLLAMA_CLOUD_MODEL = "deepseek-r1:8b";
+const FALLBACK_OLLAMA_CLOUD_MODEL = "deepseek-r1:8b";
 
 export interface ProviderMessage {
   role: "system" | "user" | "assistant";
