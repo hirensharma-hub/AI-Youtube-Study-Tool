@@ -304,6 +304,9 @@ export function LearningWorkspace({
   const [quizShortAnswers, setQuizShortAnswers] = useState<QuizShortAnswersByVideo>({});
   const [quizGrades, setQuizGrades] = useState<QuizGradesByVideo>({});
 
+  // NEW: Debug state variable to track raw transcript strings
+  const [debugTranscript, setDebugTranscript] = useState<string>("");
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("notes");
   const [questionDraft, setQuestionDraft] = useState("");
 
@@ -392,6 +395,7 @@ export function LearningWorkspace({
     if (!trimmedUrl) return;
 
     setError("");
+    setDebugTranscript(""); // Reset debug container text on new request
     setProcessing(true);
     setProcessingState({
       taskId: "init",
@@ -418,17 +422,26 @@ export function LearningWorkspace({
 
       const transcriptData = await transcriptResponse.json();
 
-      if (!transcriptData || !transcriptData.subtitles) {
-        throw new Error(transcriptData?.error || "The server returned data, but no subtitles array was found.");
+      // Fallback extraction matching either explicit .transcript, .rawTranscript, or subtitle maps
+      let fullTranscriptText = "";
+      if (transcriptData && transcriptData.transcript) {
+        fullTranscriptText = transcriptData.transcript;
+      } else if (transcriptData && transcriptData.rawTranscript) {
+        fullTranscriptText = transcriptData.rawTranscript;
+      } else if (transcriptData && Array.isArray(transcriptData.subtitles)) {
+        fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
+      } else {
+        throw new Error("The server returned data, but no explicit transcript or subtitles array was found.");
       }
+
+      // NEW: Save the parsed text payload explicitly into our debug layout container hook
+      setDebugTranscript(fullTranscriptText);
 
       const match = trimmedUrl.match(/v=([^&]+)/) || trimmedUrl.match(/youtu\.be\/([^?&]+)/);
       const videoId = match ? match[1] : null;
       if (!videoId) {
         throw new Error("Invalid YouTube URL format.");
       }
-
-      const fullTranscriptText = transcriptData.subtitles.map((s: any) => s.text).join(" ");
 
       setProcessingState({
         taskId: "init",
@@ -854,6 +867,18 @@ export function LearningWorkspace({
 
       {error ? (
         <p className="error-text workspace-error">{error}</p>
+      ) : null}
+
+      {/* NEW FEATURE: Scrollable raw-transcript live debugging monitor wrapper */}
+      {debugTranscript ? (
+        <div style={{ margin: "1rem 2rem", padding: "1rem", background: "#0f172a", border: "1px solid #334155", borderRadius: "0.75rem", textAlign: "left" }}>
+          <h3 style={{ fontSize: "0.75rem", fontFamily: "monospace", color: "#34d399", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+            [SYSTEM LIVE MONITOR] RAW TRANSCRIPT CAPTURED:
+          </h3>
+          <div style={{ maxHeight: "180px", overflowY: "auto", fontSize: "0.75rem", fontFamily: "monospace", color: "#cbd5e1", background: "#020617", padding: "0.75rem", borderRadius: "0.375rem", border: "1px solid #1e293b", whiteSpace: "pre-wrap", lineHeight: "1.5" }}>
+            {debugTranscript}
+          </div>
+        </div>
       ) : null}
 
       <section className="workspace-body">
