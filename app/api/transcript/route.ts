@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-// @ts-ignore
-import TranscriptClient from "youtube-transcript-api";
-import { exec } from "child_process";
 
 function extractVideoId(url: string): string | null {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -23,60 +20,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not extract valid YouTube Video ID' }, { status: 400 });
     }
 
-    console.log(`[Next.js App Router] Running cookie-free extraction for ID: ${videoId}`);
+    console.log(`[Next.js App Router] Forwarding request to Python FastAPI proxy backend for video: ${videoId}`);
 
-    const client = new TranscriptClient({
+    // --- CONNECT NEXTJS FRONTEND TO FASTAPI BACKEND ---
+    const pythonBackendUrl = "http://127.0.0.1:8000/";
+    
+    const response = await fetch(pythonBackendUrl, {
+      method: "POST",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-      }
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ videoUrl: videoUrl }),
     });
 
-    await client.ready;
-    const data = await client.getTranscript(videoId);
-
-    if (data && data.tracks && data.tracks[0] && data.tracks[0].transcript) {
-      const cleanTranscript = data.tracks[0].transcript
-        .map((item: any) => item.text)
-        .join(" ")
-        .replace(/\n/g, " ");
-
-      console.log(`[Next.js App Router] Success! Subtitles extracted completely cookie-free.`);
-      return NextResponse.json({
-        id: videoId,
-        title: data.title || "YouTube Video Asset",
-        transcript: cleanTranscript
-      });
-    } else {
-      throw new Error("No readable tracks returned from API payload.");
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: "Unknown backend error" }));
+      throw new Error(errorData.detail || `FastAPI returned status ${response.status}`);
     }
 
-  } catch (apiError: any) {
-    console.warn(`[Next.js App Router] API fallback triggered: ${apiError.message}`);
+    const data = await response.json();
 
-    try {
-      const body = await request.json().catch(() => ({}));
-      const videoId = extractVideoId(body.videoUrl || "") || "29Rd-Lly-fw";
-      const outputAudioPath = `/tmp/audio_${videoId}.mp3`;
-      const downloadCommand = `yt-dlp -x --audio-format mp3 --output "${outputAudioPath}" "https://www.youtube.com/watch?v=${videoId}"`;
+    // Return the response structured exactly how your frontend application expects it
+    return NextResponse.json({
+      success: true,
+      id: videoId,
+      title: "YouTube Video Asset",
+      transcript: data.transcript,
+      subtitles: data.subtitles || [{ text: data.transcript }]
+    });
 
-      await new Promise((resolve, reject) => {
-        exec(downloadCommand, (error, stdout) => {
-          if (error) reject(error);
-          else resolve(stdout);
-        });
-      });
-
-      return NextResponse.json({
-        id: "ASR_FALLBACK",
-        title: "Transcribed via Local Whisper ASR",
-        transcript: "[Local Whisper Model fallback executed successfully. Audio processed offline cookie-free.]"
-      });
-
-    } catch (fallbackError: any) {
-      return NextResponse.json({
-        error: "Internal server compilation execution pipeline error.",
-        details: fallbackError.message
-      }, { status: 500 });
-    }
+  } catch (error: any) {
+    console.error(`[Next.js App Router] Transcript Pipeline Error:`, error.message);
+    return NextResponse.json({
+      error: "Failed to compile transcript pipeline.",
+      details: error.message
+    }, { status: 500 });
   }
 }
