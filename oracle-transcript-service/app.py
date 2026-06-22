@@ -1,138 +1,67 @@
-import os
 import re
-import shutil
-import tempfile
-from functools import lru_cache
-from typing import Optional
+import traceback
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel, HttpUrl
-from yt_dlp import YoutubeDL
+app = FastAPI(title="YouTube Robust Federated Transcript API")
 
-try:
-    from faster_whisper import WhisperModel
-except Exception as exc:  # pragma: no cover - import error shown at runtime on VM
-    WhisperModel = None
-    FASTER_WHISPER_IMPORT_ERROR = exc
-else:
-    FASTER_WHISPER_IMPORT_ERROR = None
-
-
-TRANSCRIPT_BRIDGE_TOKEN = os.getenv("TRANSCRIPT_BRIDGE_TOKEN", "").strip()
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small").strip() or "small"
-WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu").strip() or "cpu"
-WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8").strip() or "int8"
-
-app = FastAPI(title="Oracle Transcript Service")
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TranscriptRequest(BaseModel):
-    videoUrl: HttpUrl
+    videoUrl: str
 
-
-def extract_youtube_video_id(video_url: str) -> str:
-    match = re.search(r"(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})", video_url)
+def extract_video_id(url: str) -> str:
+    match = re.search(r"(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})", url)
     if not match:
-        raise HTTPException(status_code=400, detail="Could not extract a YouTube video ID from that URL.")
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL format.")
     return match.group(1)
 
-
-def require_auth(authorization: Optional[str]):
-    if not TRANSCRIPT_BRIDGE_TOKEN:
-        return
-
-    expected = f"Bearer {TRANSCRIPT_BRIDGE_TOKEN}"
-    if authorization != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized transcript bridge request.")
-
-
-@lru_cache(maxsize=1)
-def get_whisper_model():
-    if WhisperModel is None:
-        raise RuntimeError(
-            "faster-whisper could not be imported on this VM. "
-            f"Original error: {FASTER_WHISPER_IMPORT_ERROR}"
-        )
-
-    return WhisperModel(
-        WHISPER_MODEL_SIZE,
-        device=WHISPER_DEVICE,
-        compute_type=WHISPER_COMPUTE_TYPE
-    )
-
-
-def download_audio(video_url: str) -> str:
-    temp_dir = tempfile.mkdtemp(prefix="yt-audio-")
-    output_template = os.path.join(temp_dir, "audio.%(ext)s")
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": output_template,
-        "quiet": True,
-        "noplaylist": True,
-        "nocheckcertificate": True
-    }
-
+@app.post("/")
+async def get_transcript(payload: TranscriptRequest):
+    video_id = extract_video_id(payload.videoUrl)
+    
+    # Route directly to the public transcript engine to bypass data center blocks
+    target_url = f"https://youtube-transcript.ai/transcript/{video_id}.txt"
+    
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-
-        for filename in os.listdir(temp_dir):
-            if filename.startswith("audio."):
-                return os.path.join(temp_dir, filename)
-
-        raise RuntimeError("Audio download finished, but no audio file was produced.")
-    except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
-
-
-def transcribe_audio(audio_path: str):
-    model = get_whisper_model()
-    segments, info = model.transcribe(audio_path, vad_filter=True, beam_size=5)
-    parts = [segment.text.strip() for segment in segments if segment.text.strip()]
-    return {
-        "rawTranscript": " ".join(parts).strip(),
-        "transcriptLanguage": getattr(info, "language", None)
-    }
-
-
-def cleanup_file(file_path: str):
-    temp_dir = os.path.dirname(file_path)
-    shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-@app.get("/health")
-def health():
-    return {
-        "ok": True,
-        "service": "oracle-transcript-service",
-        "whisperModel": WHISPER_MODEL_SIZE,
-        "device": WHISPER_DEVICE,
-        "computeType": WHISPER_COMPUTE_TYPE
-    }
-
-
-@app.post("/transcript")
-def transcript(payload: TranscriptRequest, authorization: Optional[str] = Header(default=None)):
-    require_auth(authorization)
-
-    video_id = extract_youtube_video_id(str(payload.videoUrl))
-    audio_path: Optional[str] = None
-    try:
-        audio_path = download_audio(str(payload.videoUrl))
-        transcript_payload = transcribe_audio(audio_path)
-        if not transcript_payload["rawTranscript"]:
-            raise HTTPException(status_code=500, detail="Transcription completed but returned no text.")
-
-        return {
-            "videoId": video_id,
-            **transcript_payload
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    finally:
-        if audio_path:
-            cleanup_file(audio_path)
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(target_url)
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code, 
+                    detail="Failed to extract data from external transcript engine."
+                )
+                
+            # Clean up formatting brackets returned by the engine
+            raw_text = response.text
+            clean_transcript = re.sub(r'\[\d+:\d+\]', '', raw_text) # strip [0:00] timestamps
+            clean_transcript = " ".join(clean_transcript.split())   # normalize whitespaces
+            
+            # Formatted to perfectly match your frontend array layout expectations
+            return {
+                "success": True,
+                "videoId": video_id,
+                "transcript": clean_transcript.strip(),
+                "subtitles": [
+                    {
+                        "text": clean_transcript.strip()
+                    }
+                ]
+            }
+            
+    except Exception as e:
+        print("\n--- DETECTED TRANSCRIPT EXCEPTION ---")
+        traceback.print_exc()
+        print("-------------------------------------\n")
+        
+        error_msg = str(e).split('\n')[0]
+        raise HTTPException(status_code=500, detail=f"Transcript Router Error: {error_msg}")
