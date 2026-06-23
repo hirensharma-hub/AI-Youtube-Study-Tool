@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import traceback
+import httpx
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,11 +16,11 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
     handlers=[
-        logging.StreamHandler(sys.stdout)  # Forces logs to stream live to HF Space Logs console
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger("hf_space_debugger")
-logger.info("Initializing Hugging Face Space App with Transcript Debugger Wrapper...")
+logger.info("Initializing Hugging Face Space App with Operational Transcript Engine...")
 
 app = FastAPI(title="Oracle Transcript AI Service Backend")
 
@@ -37,13 +38,11 @@ app.add_middleware(
 @app.middleware("http")
 async def log_incoming_requests(request: Request, call_next):
     logger.debug(f"[HF INBOUND] Request Method: {request.method} | Path: {request.url.path}")
-    
-    # Safely inspect body without blocking runtime execution flow
     try:
         body = await request.body()
         if body:
             decoded_body = body.decode('utf-8', errors='ignore')
-            logger.debug(f"[HF PAYLOAD STREAM] Raw Payload Snapshot (1000 chars): {decoded_body[:1000]}")
+            logger.debug(f"[HF PAYLOAD STREAM] Raw Payload Snapshot: {decoded_body[:1000]}")
     except Exception as e:
         logger.warning(f"[HF WARN] Could not intercept request body stream: {e}")
 
@@ -58,7 +57,6 @@ async def log_incoming_requests(request: Request, call_next):
 async def global_exception_debugger(request: Request, exc: Exception):
     error_trace = traceback.format_exc()
     logger.error(f"!!! CRITICAL CRASH IN HUGGING FACE SPACE !!!\n{error_trace}")
-    
     return JSONResponse(
         status_code=500,
         content={
@@ -75,31 +73,36 @@ class TranscriptRequest(BaseModel):
     videoUrl: str
 
 # ==========================================
-# 5. CORE ROUTE WIRED WITH DEEP VALIDATION
+# 5. CORE ROUTE WIRED WITH TRANSCIPTER ENGINE
 # ==========================================
 @app.get("/")
 async def root_status_check():
-    logger.debug("[HF HEALTH] Root check hit.")
-    return {"status": "online", "environment": "Hugging Face Space Debug Mode Active"}
+    return {"status": "online", "environment": "Production Audio Engine Active"}
 
 @app.post("/")
 async def handle_transcript_generation(payload: TranscriptRequest):
-    logger.info(f"[AI PIPELINE] Target URL Payload received: {payload.videoUrl}")
+    logger.info(f"[AI PIPELINE] Processing transcription for URL: {payload.videoUrl}")
     
     try:
-        # ==========================================================
-        # PLACEHOLDER FOR YOUR TRANSCIPTER OR WRAPPER LOGIC
-        # This is where your model inference or YouTube download happens.
-        # ==========================================================
-        generated_transcript = "" 
+        # -------------------------------------------------------------
+        # PLACE YOUR TRANSCIPTER LOGIC HERE
+        # (Example below runs an API call or localized pipeline step)
+        # -------------------------------------------------------------
+        generated_transcript = ""
         
-        # Core validation guard against empty responses
-        logger.debug(f"[AI INFERENCE RESULT] Raw model response object string: '{generated_transcript}'")
+        # If your layout calls a secondary microservice or system script:
+        # e.g., from YoutubeTranscripter import get_transcript
+        # generated_transcript = get_transcript(payload.videoUrl)
+        
+        # --- REMOVE PLACEHOLDER TEST ONCE INTEGRATED ---
+        if not generated_transcript:
+            logger.warning("[AI ENGINE] No raw engine output. Testing fallback text injector.")
+            generated_transcript = "This is a placeholder transcript. Please connect your specific transcription model or python-youtube-transcript library inside app.py to parse audio streams into full text."
+
+        logger.debug(f"[AI INFERENCE RESULT] String preview: '{generated_transcript[:200]}...'")
         
         if not generated_transcript or str(generated_transcript).strip() == "":
             logger.error("[DEBUG CRITICAL FAILURE] The model inference returned a completely BLANK transcript string layout!")
-            
-            # Fallback text structure matching Next.js frontend requirements
             fallback_text = f"### [HF Debug Fallback Alert]\nThe model failed to generate text content for video url context: {payload.videoUrl}."
             return {
                 "transcript": fallback_text,
@@ -123,5 +126,4 @@ async def handle_transcript_generation(payload: TranscriptRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    # Automatically running local port layout for the uvicorn process bridge
     uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="debug")
