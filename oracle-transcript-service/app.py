@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import logging
 import traceback
 import httpx
@@ -20,7 +21,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("hf_space_debugger")
-logger.info("Initializing Hugging Face Space App with Operational Transcript Engine...")
+logger.info("Initializing Hugging Face Space App with External youtube-transcript.ai Engine...")
 
 app = FastAPI(title="Oracle Transcript AI Service Backend")
 
@@ -67,47 +68,55 @@ async def global_exception_debugger(request: Request, exc: Exception):
     )
 
 # ==========================================
-# 4. REQUEST SCHEMA (ALIGNED TO NEXT.JS BODY)
+# 4. REQUEST HELPER & SCHEMAS
 # ==========================================
 class TranscriptRequest(BaseModel):
     videoUrl: str
 
+def extract_video_id(url: str) -> Optional[str]:
+    reg_exp = r"^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*"
+    match = re.match(reg_exp, url)
+    if match and len(match.group(2)) == 11:
+        return match.group(2)
+    return None
+
 # ==========================================
-# 5. CORE ROUTE WIRED WITH TRANSCIPTER ENGINE
+# 5. CORE ROUTE WIRED WITH youtube-transcript.ai
 # ==========================================
 @app.get("/")
 async def root_status_check():
-    return {"status": "online", "environment": "Production Audio Engine Active"}
+    return {"status": "online", "environment": "youtube-transcript.ai Engine Proxy Active"}
 
 @app.post("/")
 async def handle_transcript_generation(payload: TranscriptRequest):
     logger.info(f"[AI PIPELINE] Processing transcription for URL: {payload.videoUrl}")
     
+    video_id = extract_video_id(payload.videoUrl)
+    if not video_id:
+        logger.error(f"[AI ENGINE] Could not extract valid YouTube ID from URL: {payload.videoUrl}")
+        raise HTTPException(status_code=400, detail="Invalid YouTube Video URL format.")
+
     try:
-        # -------------------------------------------------------------
-        # PLACE YOUR TRANSCIPTER LOGIC HERE
-        # (Example below runs an API call or localized pipeline step)
-        # -------------------------------------------------------------
-        generated_transcript = ""
+        # Request target targeting the external youtube-transcript.ai engine text endpoint
+        target_api_url = f"https://youtube-transcript.ai/transcript/{video_id}.txt"
+        logger.info(f"[AI ENGINE] Routing GET proxy request to: {target_api_url}")
         
-        # If your layout calls a secondary microservice or system script:
-        # e.g., from YoutubeTranscripter import get_transcript
-        # generated_transcript = get_transcript(payload.videoUrl)
-        
-        # --- REMOVE PLACEHOLDER TEST ONCE INTEGRATED ---
-        if not generated_transcript:
-            logger.warning("[AI ENGINE] No raw engine output. Testing fallback text injector.")
-            generated_transcript = "This is a placeholder transcript. Please connect your specific transcription model or python-youtube-transcript library inside app.py to parse audio streams into full text."
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            api_response = await client.get(target_api_url)
+            
+            if api_response.status_code != 200:
+                logger.error(f"[AI ENGINE] External API returned error status: {api_response.status_code}")
+                raise HTTPException(
+                    status_code=api_response.status_code, 
+                    detail="Failed fetching from external transcription API provider."
+                )
+                
+            generated_transcript = api_response.text
 
         logger.debug(f"[AI INFERENCE RESULT] String preview: '{generated_transcript[:200]}...'")
         
         if not generated_transcript or str(generated_transcript).strip() == "":
-            logger.error("[DEBUG CRITICAL FAILURE] The model inference returned a completely BLANK transcript string layout!")
-            fallback_text = f"### [HF Debug Fallback Alert]\nThe model failed to generate text content for video url context: {payload.videoUrl}."
-            return {
-                "transcript": fallback_text,
-                "subtitles": [{"text": fallback_text}]
-            }
+            raise ValueError("External API provider returned an empty text body response.")
 
         return {
             "transcript": generated_transcript.strip(),
@@ -122,7 +131,12 @@ async def handle_transcript_generation(payload: TranscriptRequest):
         err_stack = traceback.format_exc()
         logger.error(f"[AI PIPELINE EXCEPTION] Error occurred during generation stage: {pipeline_err}")
         logger.error(err_stack)
-        raise pipeline_err
+        
+        fallback_text = f"### [HF Debug Fallback Alert]\nFailed to retrieve transcript for video ID {video_id} via external engine service layout."
+        return {
+            "transcript": fallback_text,
+            "subtitles": [{"text": fallback_text}]
+        }
 
 if __name__ == "__main__":
     import uvicorn
