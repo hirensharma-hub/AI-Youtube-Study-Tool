@@ -6,20 +6,28 @@ import {
   generateChatCompletion,
   prepareTranscriptForModel
 } from "@/lib/ai";
+
 import { apiError, parseJsonBody, requireApiUser } from "@/lib/api";
 import { env } from "@/lib/env";
 import { generateLessonQuiz } from "@/lib/quiz";
+
 import {
   CURRENT_PROCESSING_VERSION,
   getUserSettings,
   saveProcessedVideo
 } from "@/lib/server-data";
+
 import {
-  collectVerificationReferences,
   extractVerificationQueries,
+  collectVerificationReferences,
   verifyAndRefineNotes
 } from "@/lib/web-verify";
+
 import { extractYouTubeVideoId } from "@/lib/youtube";
+
+/* =========================
+   TYPES
+========================= */
 
 const processSchema = z.object({
   videoUrl: z.string().trim().url(),
@@ -35,26 +43,32 @@ const processSchema = z.object({
 
 export const maxDuration = 300;
 
-type ProcessTaskState = {
-  status: "running" | "completed" | "failed";
-  stage: string;
-  detail: string;
-  progress: number;
-  video?: Awaited<ReturnType<typeof runProcessing>>;
-  error?: string;
-};
-
 type TranscriptData = {
   videoId: string;
   rawTranscript: string;
   transcriptLanguage?: string;
 };
 
-type ProcessingCacheMap = Map<string, Promise<Awaited<ReturnType<typeof runProcessing>>>>;
+type ProcessTaskState = {
+  status: "running" | "completed" | "failed";
+  stage: string;
+  detail: string;
+  progress: number;
+  video?: any;
+  error?: string;
+};
+
+type ProcessingCacheMap = Map<string, Promise<any>>;
 type ProcessTaskMap = Map<string, ProcessTaskState>;
 
+/* =========================
+   GLOBAL CACHE
+========================= */
+
 declare global {
+  // eslint-disable-next-line no-var
   var __studyProcessingCache: ProcessingCacheMap | undefined;
+  // eslint-disable-next-line no-var
   var __studyProcessTasks: ProcessTaskMap | undefined;
 }
 
@@ -67,21 +81,23 @@ const processTasks: ProcessTaskMap =
 globalThis.__studyProcessingCache = processingCache;
 globalThis.__studyProcessTasks = processTasks;
 
+/* =========================
+   HELPERS
+========================= */
+
 function buildVideoTitle(videoId: string) {
   return `Study video ${videoId}`;
 }
 
-function lightweightCleanTranscript(rawTranscript: string) {
+function lightweightCleanTranscript(raw: string) {
   const seen = new Set<string>();
 
-  const lines = rawTranscript
+  return raw
     .replace(/\r/g, "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
-    .filter((l) => l.length > 8);
-
-  return lines
+    .filter((l) => l.length > 8)
     .filter((line) => {
       const n = line.toLowerCase();
 
@@ -98,6 +114,10 @@ function lightweightCleanTranscript(rawTranscript: string) {
     })
     .join("\n");
 }
+
+/* =========================
+   TRANSCRIPT CLEANING
+========================= */
 
 async function refineTranscriptForStudy(input: {
   endpoint: string;
@@ -117,18 +137,17 @@ async function refineTranscriptForStudy(input: {
     );
 
     try {
-      const result = await generateChatCompletion({
+      const res = await generateChatCompletion({
         endpoint: input.endpoint,
         model: input.model,
         accessToken: input.accessToken,
         temperature: 0,
         maxTokens: 900,
-        timeoutMs: 120000,
         messages: [
           {
             role: "system",
             content:
-              "Clean YouTube lesson transcript for GCSE study. Remove intros, ads, and filler. Keep only teaching content."
+              "Clean YouTube GCSE lesson transcript. Remove intro, ads, filler. Keep only teaching content."
           },
           {
             role: "user",
@@ -137,7 +156,7 @@ async function refineTranscriptForStudy(input: {
         ]
       });
 
-      cleaned.push(result.trim());
+      cleaned.push(res.trim());
     } catch {
       cleaned.push(chunks[i]);
     }
@@ -145,6 +164,10 @@ async function refineTranscriptForStudy(input: {
 
   return cleaned.join("\n").trim();
 }
+
+/* =========================
+   NOTES GENERATION
+========================= */
 
 async function generateDetailedNotes(input: {
   endpoint: string;
@@ -172,7 +195,7 @@ async function generateDetailedNotes(input: {
         {
           role: "system",
           content:
-            "Turn transcript into GCSE revision notes. Stay accurate and structured."
+            "Turn transcript into GCSE revision notes. Keep accurate, structured, and concise."
         },
         {
           role: "user",
@@ -196,7 +219,7 @@ async function generateDetailedNotes(input: {
       {
         role: "system",
         content:
-          "Merge notes into a final GCSE revision sheet with headings and bullet points."
+          "Merge notes into final GCSE revision sheet with headings and bullet points."
       },
       {
         role: "user",
@@ -205,6 +228,10 @@ async function generateDetailedNotes(input: {
     ]
   });
 }
+
+/* =========================
+   MAIN PROCESS PIPELINE
+========================= */
 
 async function runProcessing(
   videoUrl: string,
@@ -218,13 +245,11 @@ async function runProcessing(
     throw new Error("No transcript provided.");
   }
 
-  const transcriptData = transcriptOverride;
-
   const cleanedTranscript = await refineTranscriptForStudy({
     endpoint: env.aiApiUrl,
     model: settings.model,
     accessToken: env.aiToken,
-    rawTranscript: transcriptData.rawTranscript,
+    rawTranscript: transcriptOverride.rawTranscript,
     onProgress
   });
 
@@ -246,18 +271,22 @@ async function runProcessing(
   });
 
   return saveProcessedVideo({
-    videoId: transcriptData.videoId,
+    videoId: transcriptOverride.videoId,
     videoUrl,
-    title: buildVideoTitle(transcriptData.videoId),
-    rawTranscript: transcriptData.rawTranscript,
+    title: buildVideoTitle(transcriptOverride.videoId),
+    rawTranscript: transcriptOverride.rawTranscript,
     cleanedTranscript,
     notes,
     quiz,
     flashcards: [],
     processingVersion: CURRENT_PROCESSING_VERSION,
-    transcriptLanguage: transcriptData.transcriptLanguage
+    transcriptLanguage: transcriptOverride.transcriptLanguage
   });
 }
+
+/* =========================
+   TASK HELPERS
+========================= */
 
 function createTaskId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -267,12 +296,9 @@ function setTaskState(taskId: string, state: ProcessTaskState) {
   processTasks.set(taskId, state);
 }
 
-function updateTaskProgress(taskId: string, state: any) {
-  processTasks.set(taskId, {
-    status: "running",
-    ...state
-  });
-}
+/* =========================
+   API ROUTES
+========================= */
 
 export async function GET(request: NextRequest) {
   const { user, response } = await requireApiUser();
@@ -295,7 +321,7 @@ export async function POST(request: NextRequest) {
 
   try {
     body = await parseJsonBody(request);
-  } catch (e) {
+  } catch {
     return apiError("Invalid request body", 400);
   }
 
@@ -336,15 +362,33 @@ export async function POST(request: NextRequest) {
       parsed.data.videoUrl,
       user.id,
       transcriptOverride,
-      (state) => updateTaskProgress(taskId, state)
+      (state) => {
+        const prev = processTasks.get(taskId);
+        setTaskState(taskId, {
+          ...prev,
+          ...state,
+          status: "running"
+        });
+      }
     );
 
-    promise.then(() => {
+    promise.then((video) => {
       setTaskState(taskId, {
         status: "completed",
         stage: "done",
         detail: "Complete",
-        progress: 100
+        progress: 100,
+        video
+      });
+    });
+
+    promise.catch((error) => {
+      setTaskState(taskId, {
+        status: "failed",
+        stage: "failed",
+        detail: "Failed",
+        progress: 100,
+        error: error instanceof Error ? error.message : "Processing failed"
       });
     });
 
