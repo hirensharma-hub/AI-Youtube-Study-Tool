@@ -29,8 +29,83 @@ export interface ChatCompletionInput {
 }
 
 /**
- * Model fallback order (FIXED)
+ * ----------------------------
+ * TEXT UTILITIES (MISSING EXPORTS FIX)
+ * ----------------------------
  */
+
+export function chunkTranscript(text: string, maxChars = 2800): string[] {
+  if (!text) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+
+  const lines = text.split("\n");
+
+  for (const line of lines) {
+    if ((current + "\n" + line).length > maxChars) {
+      chunks.push(current.trim());
+      current = line;
+    } else {
+      current += "\n" + line;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks;
+}
+
+export function prepareTranscriptForModel(text: string, maxChars = 5200) {
+  if (!text) return "";
+
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
+}
+
+/**
+ * ----------------------------
+ * JSON HELPERS (MISSING EXPORTS FIX)
+ * ----------------------------
+ */
+
+export function extractJsonBlock(value: string) {
+  if (!value) return null;
+
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  return value.slice(start, end + 1);
+}
+
+export function parseJsonObjectResponse<T = any>(value: string): T | null {
+  try {
+    const json = extractJsonBlock(value);
+    if (!json) return null;
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+export function parseJsonArrayResponse<T = any>(value: string): T[] {
+  try {
+    const json = extractJsonBlock(value);
+    if (!json) return [];
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ----------------------------
+ * AI CORE
+ * ----------------------------
+ */
+
 function getModelAttemptOrder(endpoint: string, model: string) {
   return [
     model || PRIMARY_OLLAMA_CLOUD_MODEL,
@@ -38,9 +113,6 @@ function getModelAttemptOrder(endpoint: string, model: string) {
   ];
 }
 
-/**
- * Decide whether fallback is allowed
- */
 function shouldTryFallback(message: string, status?: number) {
   const normalized = message.toLowerCase();
 
@@ -66,9 +138,6 @@ function shouldTryFallback(message: string, status?: number) {
   return true;
 }
 
-/**
- * Extract text safely from different provider formats
- */
 function extractTextFromContentParts(content: unknown): string {
   if (typeof content === "string") return content.trim();
 
@@ -76,12 +145,10 @@ function extractTextFromContentParts(content: unknown): string {
     return content
       .map((part) => {
         if (typeof part === "string") return part;
-
         if (part && typeof part === "object") {
           const record = part as Record<string, unknown>;
           if (typeof record.text === "string") return record.text;
         }
-
         return "";
       })
       .join("")
@@ -91,9 +158,6 @@ function extractTextFromContentParts(content: unknown): string {
   return "";
 }
 
-/**
- * Normalize completion response across providers
- */
 function extractCompletionText(payload: any) {
   return (
     extractTextFromContentParts(payload?.message?.content) ||
@@ -110,30 +174,22 @@ function extractCompletionText(payload: any) {
   );
 }
 
-/**
- * Error parsing helper
- */
-function getErrorMessage(payload: unknown) {
-  if (!payload || typeof payload !== "object") {
-    return "The AI provider rejected the request.";
-  }
-
-  const record = payload as Record<string, any>;
-
+function getErrorMessage(payload: any) {
   return (
-    record.message ||
-    record.error?.message ||
-    record.error ||
+    payload?.message ||
+    payload?.error?.message ||
+    payload?.error ||
     "The AI provider rejected the request."
   );
 }
 
 /**
- * MAIN AI CALL FUNCTION (FIXED fallback behaviour)
+ * ----------------------------
+ * MAIN AI CALL
+ * ----------------------------
  */
-export async function generateChatCompletion(
-  input: ChatCompletionInput
-) {
+
+export async function generateChatCompletion(input: ChatCompletionInput) {
   if (input.endpoint.includes("ollama.com") && !input.accessToken) {
     throw new Error("Set OLLAMA_API_KEY in .env.local to use Ollama Cloud.");
   }
@@ -198,128 +254,22 @@ export async function generateChatCompletion(
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
-          const err = new Error(getErrorMessage(payload));
+          const errMsg = getErrorMessage(payload);
 
-          if (
-            shouldTryFallback(err.message, response.status) &&
-            model !== modelAttempts.at(-1)
-          ) {
-            lastError = err;
-            break; // go to next model
+          if (!shouldTryFallback(errMsg, response.status)) {
+            throw new Error(errMsg);
           }
 
-          throw err;
+          lastError = new Error(errMsg);
+          continue;
         }
 
-        const text = extractCompletionText(payload);
-
-        if (text) return text;
-
-        lastError = new Error("The AI provider returned an empty response.");
-      } catch (error: any) {
-        clearTimeout(timeout);
-
-        if (error?.name === "AbortError") {
-          lastError = new Error("The AI request timed out.");
-          break;
-        }
-
-        lastError = error;
+        return extractCompletionText(payload);
+      } catch (err) {
+        lastError = err as Error;
       }
     }
   }
 
-  throw (
-    lastError ||
-    new Error("The AI provider returned an empty response.")
-  );
-}
-
-/**
- * JSON extraction helpers (UNCHANGED but kept clean)
- */
-function findBalancedJsonSlice(
-  value: string,
-  openChar: "[" | "{",
-  closeChar: "]" | "}"
-) {
-  const start = value.indexOf(openChar);
-  if (start < 0) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escaping = false;
-
-  for (let i = start; i < value.length; i++) {
-    const char = value[i];
-
-    if (inString) {
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaping = true;
-        continue;
-      }
-      if (char === '"') inString = false;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (char === openChar) depth++;
-    if (char === closeChar) {
-      depth--;
-      if (depth === 0) return value.slice(start, i + 1).trim();
-    }
-  }
-
-  return null;
-}
-
-export function extractJsonBlock(value: string) {
-  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1]?.trim() ?? value.trim();
-
-  return (
-    findBalancedJsonSlice(candidate, "[", "]") ||
-    findBalancedJsonSlice(candidate, "{", "}") ||
-    (() => {
-      throw new Error("Invalid JSON format");
-    })()
-  );
-}
-
-/**
- * Quiz JSON repair
- */
-export async function repairQuizJson(input: {
-  endpoint: string;
-  model: string;
-  accessToken?: string;
-  brokenJson: string;
-}) {
-  return generateChatCompletion({
-    endpoint: input.endpoint,
-    model: input.model,
-    accessToken: input.accessToken,
-    temperature: 0,
-    maxTokens: 1800,
-    messages: [
-      {
-        role: "system",
-        content:
-          "Repair malformed JSON. Return only valid JSON array."
-      },
-      {
-        role: "user",
-        content: input.brokenJson
-      }
-    ],
-    timeoutMs: 30000
-  });
+  throw lastError || new Error("AI request failed");
 }
