@@ -1,67 +1,145 @@
-import re
+import os
+import sys
+import logging
 import traceback
-import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
-app = FastAPI(title="YouTube Robust Federated Transcript API")
+# ==========================================
+# 1. HIGH-VISIBILITY DEEBUGGER LOGGING SETUP
+# ==========================================
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # Forces logs to stream live to HF Space Logs console
+    ]
+)
+logger = logging.getLogger("hf_space_debugger")
+logger.info("Initializing Hugging Face Space App with Debugger Wrapper...")
+
+app = FastAPI(title="Oracle Transcript AI Service Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class TranscriptRequest(BaseModel):
-    videoUrl: str
+# ==========================================
+# 2. INCOMING REQUEST METRIC MIDDLEWARE
+# ==========================================
+@app.middleware("http")
+async def log_incoming_requests(request: Request, call_next):
+    logger.debug(f"[HF INBOUND] Request Method: {request.method} | Path: {request.url.path}")
+    
+    # Safely inspect body without blocking runtime execution flow
+    try:
+        body = await request.body()
+        if body:
+            decoded_body = body.decode('utf-8', errors='ignore')
+            logger.debug(f"[HF PAYLOAD STREAM] Raw Payload Snapshot (1000 chars): {decoded_body[:1000]}")
+    except Exception as e:
+        logger.warning(f"[HF WARN] Could not intercept request body stream: {e}")
 
-def extract_video_id(url: str) -> str:
-    match = re.search(r"(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})", url)
-    if not match:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL format.")
-    return match.group(1)
+    response = await call_next(request)
+    logger.debug(f"[HF OUTBOUND] Finished path: {request.url.path} with Status Code: {response.status_code}")
+    return response
+
+# ==========================================
+# 3. GLOBAL CRASH CAPTURE INTERCEPTOR
+# ==========================================
+@app.exception_handler(Exception)
+async def global_exception_debugger(request: Request, exc: Exception):
+    error_trace = traceback.format_exc()
+    logger.error(f"!!! CRITICAL CRASH IN HUGGING FACE SPACE !!!\n{error_trace}")
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal pipeline crash inside Hugging Face Space.",
+            "details": str(exc),
+            "traceback": error_trace.split("\n")
+        }
+    )
+
+# ==========================================
+# 4. REQUEST SCHEMAS & DATA STRUCTURES
+# ==========================================
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class CompletionRequest(BaseModel):
+    messages: List[ChatMessage]
+    model: Optional[str] = None
+    temperature: Optional[float] = 0.1
+    max_tokens: Optional[int] = 1000
+
+# ==========================================
+# 5. CORE ROUTE WIRED WITH DEEP VALIDATION
+# ==========================================
+@app.get("/")
+async def root_status_check():
+    logger.debug("[HF HEALTH] Root check hit.")
+    return {"status": "online", "environment": "Hugging Face Space Debug Mode Active"}
 
 @app.post("/")
-async def get_transcript(payload: TranscriptRequest):
-    video_id = extract_video_id(payload.videoUrl)
+async def handle_chat_completion(payload: CompletionRequest):
+    logger.info(f"[AI PIPELINE] Payload received. Messages Count: {len(payload.messages)} | Model requested: {payload.model}")
     
-    # Route directly to the public transcript engine to bypass data center blocks
-    target_url = f"https://youtube-transcript.ai/transcript/{video_id}.txt"
-    
+    # Trace the last human prompt sent over from Next.js
+    user_prompts = [msg.content for msg in payload.messages if msg.role == "user"]
+    last_prompt = user_prompts[-1] if user_prompts else "No user prompt found"
+    logger.debug(f"[AI PIPELINE] Target Prompt Segment length: {len(last_prompt)} characters.")
+    logger.debug(f"[AI PIPELINE] Target Prompt Preview: {last_prompt[:300]}...")
+
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(target_url)
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code, 
-                    detail="Failed to extract data from external transcript engine."
-                )
-                
-            # Clean up formatting brackets returned by the engine
-            raw_text = response.text
-            clean_transcript = re.sub(r'\[\d+:\d+\]', '', raw_text) # strip [0:00] timestamps
-            clean_transcript = " ".join(clean_transcript.split())   # normalize whitespaces
-            
-            # Formatted to perfectly match your frontend array layout expectations
-            return {
-                "success": True,
-                "videoId": video_id,
-                "transcript": clean_transcript.strip(),
-                "subtitles": [
-                    {
-                        "text": clean_transcript.strip()
-                    }
-                ]
-            }
-            
-    except Exception as e:
-        print("\n--- DETECTED TRANSCRIPT EXCEPTION ---")
-        traceback.print_exc()
-        print("-------------------------------------\n")
+        # ==========================================================
+        # PLACEHOLDER FOR YOUR MODEL INFERENCE OR WRAPPER LOGIC
+        # This replaces or triggers your original inference generation
+        # ==========================================================
+        generated_output = "" 
         
-        error_msg = str(e).split('\n')[0]
-        raise HTTPException(status_code=500, detail=f"Transcript Router Error: {error_msg}")
+        # NOTE: If you use an explicit model/pipeline variable, invoke it safely below:
+        # Example: generated_output = pipeline_runner(last_prompt)
+        
+        # Core validation guard against empty responses
+        logger.debug(f"[AI INFERENCE RESULT] Raw model response object: '{generated_output}'")
+        
+        if not generated_output or str(generated_output).strip() == "":
+            logger.error("[DEBUG CRITICAL FAILURE] The model inference returned a completely BLANK string layout!")
+            
+            # Temporary fallback structure so the Next.js pipeline doesn't crash completely
+            fallback_text = f"### [HF Debug Fallback Alert]\nThe model failed to generate text content for this block. Raw Prompt Context length: {len(last_prompt)} characters."
+            return JSONResponse(
+                status_code=200, 
+                content={"choices": [{"message": {"role": "assistant", "content": fallback_text}}]}
+            )
+
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": generated_output.strip()
+                    }
+                }
+            ]
+        }
+
+    except Exception as pipeline_err:
+        err_stack = traceback.format_exc()
+        logger.error(f"[AI PIPELINE EXCEPTION] Error occurred during generation stage: {pipeline_err}")
+        logger.error(err_stack)
+        raise pipeline_err
+
+if __name__ == "__main__":
+    import uvicorn
+    # Automatically running local port layout for the uvicorn process bridge
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="debug")
