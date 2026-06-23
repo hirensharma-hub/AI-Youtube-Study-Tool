@@ -1,0 +1,12 @@
+nohup: ignoring input
+INFO:     Started server process [87192]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     86.4.251.208:0 - "POST / HTTP/1.1" 500 Internal Server Error
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [87192]
+ete.
+INFO:     Finished server process [87117]

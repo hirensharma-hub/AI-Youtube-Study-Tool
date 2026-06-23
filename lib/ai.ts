@@ -1,7 +1,7 @@
 import { QuizQuestion } from "@/types";
 
-const PRIMARY_OLLAMA_CLOUD_MODEL = "deepseek-r1:8b";
-const FALLBACK_OLLAMA_CLOUD_MODEL = "deepseek-r1:8b";
+const PRIMARY_OLLAMA_CLOUD_MODEL = process.env.OLLAMA_MODEL || "llama3:70b";
+const FALLBACK_OLLAMA_CLOUD_MODEL = process.env.OLLAMA_MODEL || "llama3:70b";
 
 export interface ProviderMessage {
   role: "system" | "user" | "assistant";
@@ -20,18 +20,7 @@ export interface ChatCompletionInput {
 }
 
 function getModelAttemptOrder(endpoint: string, model: string) {
-  if (!endpoint.includes("ollama.com")) {
-    return [model];
-  }
-
-  const normalizedModel = model.trim();
-  const preferredOrder = [
-    PRIMARY_OLLAMA_CLOUD_MODEL,
-    FALLBACK_OLLAMA_CLOUD_MODEL,
-    normalizedModel
-  ].filter(Boolean);
-
-  return Array.from(new Set(preferredOrder));
+  return [PRIMARY_OLLAMA_CLOUD_MODEL];
 }
 
 function shouldTryFallback(message: string, status?: number) {
