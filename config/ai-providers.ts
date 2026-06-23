@@ -5,8 +5,15 @@ export const providerCatalog: Record<ProviderId, ProviderCatalogItem> = {
     id: "ollama",
     label: "Ollama",
     description: "Works with custom hosted endpoints via environment variables.",
-    defaultModel: "llama3-70b:cloud" || "",
-    modelSuggestions: "llama3-70b:cloud" ? ["llama3-70b:cloud"] : []
+    defaultModel: "qwen3:1.7b",
+    modelSuggestions: [
+      "qwen3:1.7b",
+      "qwen3:4b",
+      "qwen2.5:3b",
+      "llama3.2:3b",
+      "mistral:7b",
+      "gpt-oss:20b-cloud"
+    ]
   }
 };
 

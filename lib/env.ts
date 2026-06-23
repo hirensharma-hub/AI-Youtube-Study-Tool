@@ -59,5 +59,6 @@ export const env = {
   tubeTextApiUrl: optionalEnv("TUBETEXT_API_URL") ?? "https://tubetext.vercel.app",
   aiApiUrl: optionalEnv("OLLAMA_API_URL") ?? "https://ollama.com/v1/chat/completions",
   aiToken: optionalEnv("OLLAMA_API_KEY") ?? optionalEnv("OLLAMA_API_TOKEN") ?? "",
-  aiModel: optionalEnv("OLLAMA_MODEL") ?? "deepseek-v3.1:671b-cloud"
+  aiModel: optionalEnv("OLLAMA_MODEL") ?? "qwen3:1.7b",
+  enableWebVerification: optionalEnv("ENABLE_WEB_VERIFICATION") === "1"
 };

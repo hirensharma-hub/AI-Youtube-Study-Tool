@@ -4,10 +4,11 @@ import { QuizQuestion } from "@/types";
  * Models
  */
 const PRIMARY_OLLAMA_CLOUD_MODEL =
-  process.env.OLLAMA_MODEL || "llama3:70b";
+  process.env.OLLAMA_MODEL || "qwen3:1.7b";
 
 const FALLBACK_OLLAMA_CLOUD_MODEL =
-  process.env.OLLAMA_FALLBACK_MODEL || "llama3:8b";
+  process.env.OLLAMA_FALLBACK_MODEL || "qwen2.5:3b";
+const LAST_RESORT_OLLAMA_CLOUD_MODEL = "gpt-oss:20b-cloud";
 
 /**
  * Types
@@ -112,7 +113,8 @@ export const parseJsonArrayResponse = <T = any>(
 function getModelAttemptOrder(model: string) {
   return [
     model || PRIMARY_OLLAMA_CLOUD_MODEL,
-    FALLBACK_OLLAMA_CLOUD_MODEL
+    FALLBACK_OLLAMA_CLOUD_MODEL,
+    LAST_RESORT_OLLAMA_CLOUD_MODEL
   ];
 }
 

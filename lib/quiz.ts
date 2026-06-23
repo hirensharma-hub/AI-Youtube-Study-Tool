@@ -1,6 +1,6 @@
 import { QuizQuestion } from "@/types";
 
-import { generateChatCompletion } from "@/lib/ai";
+import { generateChatCompletion, parseJsonObjectResponse } from "@/lib/ai";
 
 const LOCAL_MCQ_COUNT = 7;
 const LOCAL_SHORT_ANSWER_COUNT = 3;
@@ -581,6 +581,125 @@ export async function generateLessonQuiz(input: {
   onProgress?: (detail: string, progress: number) => void;
 }): Promise<QuizQuestion[]> {
   const sentences = extractStudySentences(input.quizSource);
+
+  if (input.endpoint.includes("ollama.com") || input.endpoint.includes("hf.space")) {
+    input.onProgress?.("Generating quiz", 22);
+
+    const raw = await generateChatCompletion({
+      endpoint: input.endpoint,
+      model: input.model,
+      accessToken: input.accessToken,
+      temperature: 0.15,
+      maxTokens: 2400,
+      timeoutMs: 240000,
+      responseFormat: input.endpoint.includes("/v1/") ? { type: "json_object" } : undefined,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a GCSE revision assistant. Return valid JSON only. No markdown, no code fences, no extra text."
+        },
+        {
+          role: "user",
+          content:
+            `Create a GCSE quiz from this lesson transcript. Use only the transcript content.\n\n` +
+            `Return JSON with exactly this shape:\n` +
+            `{\n` +
+            `  "questions": [\n` +
+            `    {\n` +
+            `      "type": "mcq",\n` +
+            `      "question": "...",\n` +
+            `      "options": ["...", "...", "...", "..."],\n` +
+            `      "answerIndex": 0,\n` +
+            `      "explanation": "..."\n` +
+            `    },\n` +
+            `    {\n` +
+            `      "type": "short-answer",\n` +
+            `      "question": "...",\n` +
+            `      "marks": 3,\n` +
+            `      "answer": "...",\n` +
+            `      "explanation": "...",\n` +
+            `      "markScheme": [\n` +
+            `        { "label": "...", "acceptedAnswers": ["..."] }\n` +
+            `      ]\n` +
+            `    }\n` +
+            `  ]\n` +
+            `}\n\n` +
+            `Requirements:\n` +
+            `- Produce exactly 7 mcq questions and 3 short-answer questions.\n` +
+            `- Make questions GCSE-appropriate and specific.\n` +
+            `- Avoid generic stems like "according to the transcript" or "which statement is correct".\n` +
+            `- Keep answers unambiguous.\n` +
+            `- Use content from the transcript only.\n` +
+            `- Keep the wording clear, direct, and exam-style.\n\n` +
+            `Transcript:\n${input.quizSource}`
+        }
+      ]
+    });
+
+    const parsed = parseJsonObjectResponse<{ questions?: Array<any> }>(raw);
+    const questions = parsed?.questions ?? [];
+
+    if (questions.length !== LOCAL_MCQ_COUNT + LOCAL_SHORT_ANSWER_COUNT) {
+      throw new Error("The AI provider returned an invalid quiz response.");
+    }
+
+    const mapped = questions.map((question, index) => {
+      if (question.type === "mcq") {
+        const options = Array.isArray(question.options)
+          ? question.options.map((text: string, optionIndex: number) => ({
+              id: `option-${optionIndex + 1}`,
+              text: String(text).trim()
+            }))
+          : [];
+        const answerIndex = Number(question.answerIndex ?? 0);
+
+        if (options.length !== 4 || answerIndex < 0 || answerIndex > 3) {
+          throw new Error("The AI provider returned an invalid quiz response.");
+        }
+
+        return {
+          id: `question-${index + 1}`,
+          type: "mcq",
+          question: String(question.question).trim(),
+          answer: options[answerIndex].text,
+          explanation: String(question.explanation || "Review the lesson notes to justify the correct answer.").trim(),
+          options,
+          correctOptionId: options[answerIndex].id,
+          markCount: 1
+        } satisfies QuizQuestion;
+      }
+
+      const markScheme = Array.isArray(question.markScheme)
+        ? question.markScheme.map((point: any, pointIndex: number) => ({
+            id: `point-${index + 1}-${pointIndex + 1}`,
+            label: String(point?.label ?? `Point ${pointIndex + 1}`).trim(),
+            marks: 1,
+            acceptedAnswers: Array.isArray(point?.acceptedAnswers)
+              ? point.acceptedAnswers.map((answer: unknown) => String(answer).trim()).filter(Boolean)
+              : []
+          }))
+        : [];
+
+      if (!markScheme.length) {
+        throw new Error("The AI provider returned an invalid quiz response.");
+      }
+
+      return {
+        id: `question-written-${index + 1}`,
+        type: "short-answer",
+        question: String(question.question).trim(),
+        answer: String(question.answer || "").trim(),
+        explanation: String(question.explanation || "Use the mark-scheme points to build a full-mark answer.").trim(),
+        markCount: Math.max(2, Math.min(4, Number(question.marks ?? markScheme.length) || markScheme.length)),
+        markScheme
+      } satisfies QuizQuestion;
+    });
+
+    input.onProgress?.("Formatting the quiz", 92);
+    return mapped;
+  }
+
   const facts = await extractQuizFacts({
     endpoint: input.endpoint,
     model: input.model,

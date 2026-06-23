@@ -127,6 +127,11 @@ async function refineTranscriptForStudy(input: {
   onProgress?: (detail: string, progress: number) => void;
 }) {
   const base = lightweightCleanTranscript(input.rawTranscript);
+  if (input.endpoint.includes("ollama.com") || input.endpoint.includes("hf.space")) {
+    input.onProgress?.("Cleaning transcript locally", 18);
+    return base;
+  }
+
   const chunks = chunkTranscript(base, 2800);
   const cleaned: string[] = [];
 
@@ -176,6 +181,36 @@ async function generateDetailedNotes(input: {
   cleanedTranscript: string;
   onProgress?: (detail: string, progress: number) => void;
 }) {
+  if (input.endpoint.includes("ollama.com") || input.endpoint.includes("hf.space")) {
+    input.onProgress?.("Generating notes", 38);
+
+    return generateChatCompletion({
+      endpoint: input.endpoint,
+      model: input.model,
+      accessToken: input.accessToken,
+      temperature: 0.15,
+      maxTokens: 1400,
+      timeoutMs: 240000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Turn a GCSE lesson transcript into concise revision notes. Use headings and bullet points. Keep the teaching content, remove intros, ads, filler, and repeated wording."
+        },
+        {
+          role: "user",
+          content:
+            `Transcript:\n${prepareTranscriptForModel(input.cleanedTranscript, 14000)}\n\n` +
+            `Return markdown with these sections only:\n` +
+            `## Revision Notes\n` +
+            `### Key Ideas\n` +
+            `### Quick Summary\n` +
+            `### Things To Remember`
+        }
+      ]
+    });
+  }
+
   const chunks = chunkTranscript(input.cleanedTranscript, 2600);
   const notes: string[] = [];
 
@@ -261,13 +296,56 @@ async function runProcessing(
     onProgress
   });
 
+  let verifiedNotes = notes;
+
+  if (env.enableWebVerification) {
+    onProgress?.({
+      stage: "notes",
+      detail: "Verifying note accuracy",
+      progress: 66
+    });
+
+    try {
+      const verificationQueries = await extractVerificationQueries({
+        endpoint: env.aiApiUrl,
+        model: settings.model,
+        accessToken: env.aiToken,
+        cleanedTranscript
+      });
+      const references = await collectVerificationReferences(verificationQueries);
+
+      verifiedNotes = await verifyAndRefineNotes({
+        endpoint: env.aiApiUrl,
+        model: settings.model,
+        accessToken: env.aiToken,
+        cleanedTranscript,
+        draftNotes: notes,
+        references
+      });
+    } catch {
+      verifiedNotes = notes;
+    }
+  }
+
   const quizSource = prepareTranscriptForModel(cleanedTranscript, 5200);
+
+  onProgress?.({
+    stage: "mcq",
+    detail: "Generating quiz questions",
+    progress: 72
+  });
 
   const quiz = await generateLessonQuiz({
     endpoint: env.aiApiUrl,
     model: settings.model,
     accessToken: env.aiToken,
-    quizSource
+    quizSource,
+    onProgress: (detail, progress) =>
+      onProgress?.({
+        stage: progress < 70 ? "mcq" : "written",
+        detail,
+        progress: 70 + Math.round((progress / 100) * 18)
+      })
   });
 
   return saveProcessedVideo({
@@ -276,7 +354,7 @@ async function runProcessing(
     title: buildVideoTitle(transcriptOverride.videoId),
     rawTranscript: transcriptOverride.rawTranscript,
     cleanedTranscript,
-    notes,
+    notes: verifiedNotes,
     quiz,
     flashcards: [],
     processingVersion: CURRENT_PROCESSING_VERSION,
