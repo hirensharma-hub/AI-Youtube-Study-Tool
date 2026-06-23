@@ -273,3 +273,62 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
 
   throw lastError || new Error("AI request failed");
 }
+/**
+ * -------------------------------------------------
+ * COMPATIBILITY LAYER (FIX ALL ROUTE IMPORT ERRORS)
+ * -------------------------------------------------
+ */
+
+// transcript helpers
+export const chunkTranscript = (text: string, size?: number) => {
+  if (!text) return [];
+  const max = size ?? 2800;
+
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const line of text.split("\n")) {
+    if ((current + "\n" + line).length > max) {
+      chunks.push(current.trim());
+      current = line;
+    } else {
+      current += "\n" + line;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks;
+};
+
+export const prepareTranscriptForModel = (text: string, max = 5200) => {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max) : text;
+};
+
+// alias used by older routes
+export const buildRelevantTranscriptContext = prepareTranscriptForModel;
+
+// JSON helpers
+export const parseJsonObjectResponse = (value: string) => {
+  try {
+    const start = value.indexOf("{");
+    const end = value.lastIndexOf("}");
+    if (start === -1 || end === -1) return null;
+    return JSON.parse(value.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+};
+
+export const parseJsonArrayResponse = (value: string) => {
+  try {
+    const start = value.indexOf("[");
+    const end = value.lastIndexOf("]");
+    if (start === -1 || end === -1) return [];
+    const parsed = JSON.parse(value.slice(start, end + 1));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
