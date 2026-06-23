@@ -30,79 +30,7 @@ export interface ChatCompletionInput {
 
 /**
  * ----------------------------
- * TEXT UTILITIES (MISSING EXPORTS FIX)
- * ----------------------------
- */
-
-export function chunkTranscript(text: string, maxChars = 2800): string[] {
-  if (!text) return [];
-
-  const chunks: string[] = [];
-  let current = "";
-
-  const lines = text.split("\n");
-
-  for (const line of lines) {
-    if ((current + "\n" + line).length > maxChars) {
-      chunks.push(current.trim());
-      current = line;
-    } else {
-      current += "\n" + line;
-    }
-  }
-
-  if (current.trim()) chunks.push(current.trim());
-
-  return chunks;
-}
-
-export function prepareTranscriptForModel(text: string, maxChars = 5200) {
-  if (!text) return "";
-
-  return text.length > maxChars ? text.slice(0, maxChars) : text;
-}
-
-/**
- * ----------------------------
- * JSON HELPERS (MISSING EXPORTS FIX)
- * ----------------------------
- */
-
-export function extractJsonBlock(value: string) {
-  if (!value) return null;
-
-  const start = value.indexOf("{");
-  const end = value.lastIndexOf("}");
-
-  if (start === -1 || end === -1 || end <= start) return null;
-
-  return value.slice(start, end + 1);
-}
-
-export function parseJsonObjectResponse<T = any>(value: string): T | null {
-  try {
-    const json = extractJsonBlock(value);
-    if (!json) return null;
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-export function parseJsonArrayResponse<T = any>(value: string): T[] {
-  try {
-    const json = extractJsonBlock(value);
-    if (!json) return [];
-    const parsed = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * ----------------------------
- * AI CORE
+ * AI CORE UTILITIES
  * ----------------------------
  */
 
@@ -145,10 +73,12 @@ function extractTextFromContentParts(content: unknown): string {
     return content
       .map((part) => {
         if (typeof part === "string") return part;
+
         if (part && typeof part === "object") {
           const record = part as Record<string, unknown>;
           if (typeof record.text === "string") return record.text;
         }
+
         return "";
       })
       .join("")
@@ -273,22 +203,22 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
 
   throw lastError || new Error("AI request failed");
 }
+
 /**
  * -------------------------------------------------
- * COMPATIBILITY LAYER (FIX ALL ROUTE IMPORT ERRORS)
+ * COMPATIBILITY LAYER (ONLY EXPORTS USED BY ROUTES)
  * -------------------------------------------------
  */
 
 // transcript helpers
-export const chunkTranscript = (text: string, size?: number) => {
+export const chunkTranscript = (text: string, size = 2800) => {
   if (!text) return [];
-  const max = size ?? 2800;
 
   const chunks: string[] = [];
   let current = "";
 
   for (const line of text.split("\n")) {
-    if ((current + "\n" + line).length > max) {
+    if ((current + "\n" + line).length > size) {
       chunks.push(current.trim());
       current = line;
     } else {
@@ -306,7 +236,6 @@ export const prepareTranscriptForModel = (text: string, max = 5200) => {
   return text.length > max ? text.slice(0, max) : text;
 };
 
-// alias used by older routes
 export const buildRelevantTranscriptContext = prepareTranscriptForModel;
 
 // JSON helpers
