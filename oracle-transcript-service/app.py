@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 # ==========================================
-# 1. HIGH-VISIBILITY DEEBUGGER LOGGING SETUP
+# 1. HIGH-VISIBILITY DEBUGGER LOGGING SETUP
 # ==========================================
 logging.basicConfig(
     level=logging.DEBUG,
@@ -19,7 +19,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("hf_space_debugger")
-logger.info("Initializing Hugging Face Space App with Debugger Wrapper...")
+logger.info("Initializing Hugging Face Space App with Transcript Debugger Wrapper...")
 
 app = FastAPI(title="Oracle Transcript AI Service Backend")
 
@@ -69,17 +69,10 @@ async def global_exception_debugger(request: Request, exc: Exception):
     )
 
 # ==========================================
-# 4. REQUEST SCHEMAS & DATA STRUCTURES
+# 4. REQUEST SCHEMA (ALIGNED TO NEXT.JS BODY)
 # ==========================================
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-class CompletionRequest(BaseModel):
-    messages: List[ChatMessage]
-    model: Optional[str] = None
-    temperature: Optional[float] = 0.1
-    max_tokens: Optional[int] = 1000
+class TranscriptRequest(BaseModel):
+    videoUrl: str
 
 # ==========================================
 # 5. CORE ROUTE WIRED WITH DEEP VALIDATION
@@ -90,45 +83,34 @@ async def root_status_check():
     return {"status": "online", "environment": "Hugging Face Space Debug Mode Active"}
 
 @app.post("/")
-async def handle_chat_completion(payload: CompletionRequest):
-    logger.info(f"[AI PIPELINE] Payload received. Messages Count: {len(payload.messages)} | Model requested: {payload.model}")
+async def handle_transcript_generation(payload: TranscriptRequest):
+    logger.info(f"[AI PIPELINE] Target URL Payload received: {payload.videoUrl}")
     
-    # Trace the last human prompt sent over from Next.js
-    user_prompts = [msg.content for msg in payload.messages if msg.role == "user"]
-    last_prompt = user_prompts[-1] if user_prompts else "No user prompt found"
-    logger.debug(f"[AI PIPELINE] Target Prompt Segment length: {len(last_prompt)} characters.")
-    logger.debug(f"[AI PIPELINE] Target Prompt Preview: {last_prompt[:300]}...")
-
     try:
         # ==========================================================
-        # PLACEHOLDER FOR YOUR MODEL INFERENCE OR WRAPPER LOGIC
-        # This replaces or triggers your original inference generation
+        # PLACEHOLDER FOR YOUR TRANSCIPTER OR WRAPPER LOGIC
+        # This is where your model inference or YouTube download happens.
         # ==========================================================
-        generated_output = "" 
-        
-        # NOTE: If you use an explicit model/pipeline variable, invoke it safely below:
-        # Example: generated_output = pipeline_runner(last_prompt)
+        generated_transcript = "" 
         
         # Core validation guard against empty responses
-        logger.debug(f"[AI INFERENCE RESULT] Raw model response object: '{generated_output}'")
+        logger.debug(f"[AI INFERENCE RESULT] Raw model response object string: '{generated_transcript}'")
         
-        if not generated_output or str(generated_output).strip() == "":
-            logger.error("[DEBUG CRITICAL FAILURE] The model inference returned a completely BLANK string layout!")
+        if not generated_transcript or str(generated_transcript).strip() == "":
+            logger.error("[DEBUG CRITICAL FAILURE] The model inference returned a completely BLANK transcript string layout!")
             
-            # Temporary fallback structure so the Next.js pipeline doesn't crash completely
-            fallback_text = f"### [HF Debug Fallback Alert]\nThe model failed to generate text content for this block. Raw Prompt Context length: {len(last_prompt)} characters."
-            return JSONResponse(
-                status_code=200, 
-                content={"choices": [{"message": {"role": "assistant", "content": fallback_text}}]}
-            )
+            # Fallback text structure matching Next.js frontend requirements
+            fallback_text = f"### [HF Debug Fallback Alert]\nThe model failed to generate text content for video url context: {payload.videoUrl}."
+            return {
+                "transcript": fallback_text,
+                "subtitles": [{"text": fallback_text}]
+            }
 
         return {
-            "choices": [
+            "transcript": generated_transcript.strip(),
+            "subtitles": [
                 {
-                    "message": {
-                        "role": "assistant",
-                        "content": generated_output.strip()
-                    }
+                    "text": generated_transcript.strip()
                 }
             ]
         }
