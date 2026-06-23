@@ -34,7 +34,7 @@ export interface ChatCompletionInput {
  * ----------------------------
  */
 
-export function chunkTranscript(text: string, maxChars = 2800): string[] {
+export const chunkTranscript = (text: string, maxChars = 2800): string[] => {
   if (!text) return [];
 
   const chunks: string[] = [];
@@ -50,17 +50,16 @@ export function chunkTranscript(text: string, maxChars = 2800): string[] {
   }
 
   if (current.trim()) chunks.push(current.trim());
-
   return chunks;
-}
+};
 
-export function prepareTranscriptForModel(
+export const prepareTranscriptForModel = (
   text: string,
   maxChars = 5200
-): string {
+): string => {
   if (!text) return "";
   return text.length > maxChars ? text.slice(0, maxChars) : text;
-}
+};
 
 /**
  * ----------------------------
@@ -68,7 +67,7 @@ export function prepareTranscriptForModel(
  * ----------------------------
  */
 
-export function extractJsonBlock(value: string): string | null {
+export const extractJsonBlock = (value: string): string | null => {
   if (!value) return null;
 
   const start = value.indexOf("{");
@@ -77,11 +76,11 @@ export function extractJsonBlock(value: string): string | null {
   if (start === -1 || end === -1 || end <= start) return null;
 
   return value.slice(start, end + 1);
-}
+};
 
-export function parseJsonObjectResponse<T = any>(
+export const parseJsonObjectResponse = <T = any>(
   value: string
-): T | null {
+): T | null => {
   try {
     const json = extractJsonBlock(value);
     if (!json) return null;
@@ -89,11 +88,11 @@ export function parseJsonObjectResponse<T = any>(
   } catch {
     return null;
   }
-}
+};
 
-export function parseJsonArrayResponse<T = any>(
+export const parseJsonArrayResponse = <T = any>(
   value: string
-): T[] {
+): T[] => {
   try {
     const json = extractJsonBlock(value);
     if (!json) return [];
@@ -102,7 +101,7 @@ export function parseJsonArrayResponse<T = any>(
   } catch {
     return [];
   }
-}
+};
 
 /**
  * ----------------------------
@@ -110,7 +109,7 @@ export function parseJsonArrayResponse<T = any>(
  * ----------------------------
  */
 
-function getModelAttemptOrder(endpoint: string, model: string) {
+function getModelAttemptOrder(model: string) {
   return [
     model || PRIMARY_OLLAMA_CLOUD_MODEL,
     FALLBACK_OLLAMA_CLOUD_MODEL
@@ -213,16 +212,14 @@ export async function generateChatCompletion(
     headers.Authorization = `Bearer ${input.accessToken}`;
   }
 
-  const modelAttempts = getModelAttemptOrder(
-    input.endpoint,
-    input.model
-  );
+  const modelAttempts = getModelAttemptOrder(input.model);
 
   let lastError: Error | null = null;
 
   for (const model of modelAttempts) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
+
       const timeout = setTimeout(
         () => controller.abort(),
         input.timeoutMs ?? 600000
@@ -245,10 +242,7 @@ export async function generateChatCompletion(
                   max_tokens: input.maxTokens,
                   messages: input.messages,
                   ...(input.responseFormat
-                    ? {
-                        response_format:
-                          input.responseFormat
-                      }
+                    ? { response_format: input.responseFormat }
                     : {})
                 }
               : {
@@ -268,9 +262,7 @@ export async function generateChatCompletion(
 
         clearTimeout(timeout);
 
-        const payload = await response
-          .json()
-          .catch(() => null);
+        const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
           const errMsg = getErrorMessage(payload);
@@ -295,7 +287,7 @@ export async function generateChatCompletion(
 
 /**
  * ----------------------------
- * COMPATIBILITY LAYER
+ * COMPATIBILITY ALIASES
  * ----------------------------
  */
 
