@@ -16,3 +16,5 @@ pnpm-debug.log*
 .env.local
 .env.local.save
 cookies.json
+ecosystem.config.js
+
