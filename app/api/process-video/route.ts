@@ -28,7 +28,7 @@ const processSchema = z.object({
     .object({
       videoId: z.string().trim().min(11),
       rawTranscript: z.string().trim().min(1),
-      transcriptLanguage: z.string().trim().min(1).optional()
+      transcriptLanguage: z.string().trim().optional()
     })
     .optional()
 });
@@ -54,22 +54,18 @@ type ProcessingCacheMap = Map<string, Promise<Awaited<ReturnType<typeof runProce
 type ProcessTaskMap = Map<string, ProcessTaskState>;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __studyProcessingCache: ProcessingCacheMap | undefined;
-  // eslint-disable-next-line no-var
   var __studyProcessTasks: ProcessTaskMap | undefined;
 }
 
-const processingCache: ProcessingCacheMap = globalThis.__studyProcessingCache ?? new Map();
-const processTasks: ProcessTaskMap = globalThis.__studyProcessTasks ?? new Map();
+const processingCache: ProcessingCacheMap =
+  globalThis.__studyProcessingCache ?? new Map();
 
-if (!globalThis.__studyProcessingCache) {
-  globalThis.__studyProcessingCache = processingCache;
-}
+const processTasks: ProcessTaskMap =
+  globalThis.__studyProcessTasks ?? new Map();
 
-if (!globalThis.__studyProcessTasks) {
-  globalThis.__studyProcessTasks = processTasks;
-}
+globalThis.__studyProcessingCache = processingCache;
+globalThis.__studyProcessTasks = processTasks;
 
 function buildVideoTitle(videoId: string) {
   return `Study video ${videoId}`;
@@ -77,32 +73,30 @@ function buildVideoTitle(videoId: string) {
 
 function lightweightCleanTranscript(rawTranscript: string) {
   const seen = new Set<string>();
+
   const lines = rawTranscript
     .replace(/\r/g, "")
     .split("\n")
-    .map((line) => line.trim())
+    .map((l) => l.trim())
     .filter(Boolean)
-    .filter((line) => line.length > 8);
+    .filter((l) => l.length > 8);
 
-  const cleaned = lines.filter((line) => {
-    const normalized = line.toLowerCase();
-    if (
-      normalized.includes("subscribe") ||
-      normalized.includes("like and share") ||
-      normalized.includes("thanks for watching")
-    ) {
-      return false;
-    }
+  return lines
+    .filter((line) => {
+      const n = line.toLowerCase();
 
-    if (seen.has(normalized)) {
-      return false;
-    }
+      if (
+        n.includes("subscribe") ||
+        n.includes("like and share") ||
+        n.includes("thanks for watching")
+      ) return false;
 
-    seen.add(normalized);
-    return true;
-  });
+      if (seen.has(n)) return false;
 
-  return cleaned.join("\n");
+      seen.add(n);
+      return true;
+    })
+    .join("\n");
 }
 
 async function refineTranscriptForStudy(input: {
@@ -112,18 +106,18 @@ async function refineTranscriptForStudy(input: {
   rawTranscript: string;
   onProgress?: (detail: string, progress: number) => void;
 }) {
-  const baseTranscript = lightweightCleanTranscript(input.rawTranscript);
-  const chunks = chunkTranscript(baseTranscript, 2800);
-  const cleanedChunks: string[] = [];
+  const base = lightweightCleanTranscript(input.rawTranscript);
+  const chunks = chunkTranscript(base, 2800);
+  const cleaned: string[] = [];
 
-  for (let index = 0; index < chunks.length; index += 1) {
+  for (let i = 0; i < chunks.length; i++) {
     input.onProgress?.(
-      `Cleaning the lesson transcript (${index + 1}/${chunks.length})`,
-      18 + Math.round((index / Math.max(chunks.length, 1)) * 12)
+      `Cleaning transcript (${i + 1}/${chunks.length})`,
+      18 + Math.round((i / chunks.length) * 12)
     );
 
     try {
-      const cleanedChunk = await generateChatCompletion({
+      const result = await generateChatCompletion({
         endpoint: input.endpoint,
         model: input.model,
         accessToken: input.accessToken,
@@ -134,31 +128,22 @@ async function refineTranscriptForStudy(input: {
           {
             role: "system",
             content:
-              "You are cleaning a YouTube lesson transcript for GCSE study use. Keep only the educational teaching content. Remove greetings, channel intros, sponsor mentions, calls to like/subscribe, repeated recaps, off-topic chat, and outros. Do not add any new information. Return plain cleaned lesson text only."
+              "Clean YouTube lesson transcript for GCSE study. Remove intros, ads, and filler. Keep only teaching content."
           },
           {
             role: "user",
-            content:
-              `Clean this transcript chunk for GCSE study use.\n\n` +
-              `Rules:\n` +
-              `- Keep only educational teaching content.\n` +
-              `- Remove introductions like welcome to the channel.\n` +
-              `- Remove calls to action, sponsor lines, and outro lines.\n` +
-              `- Remove repeated filler and repeated recap wording.\n` +
-              `- Keep the original meaning and order of the teaching points.\n` +
-              `- Return plain cleaned transcript text only.\n\n` +
-              `Transcript chunk:\n${chunks[index]}`
+            content: chunks[i]
           }
         ]
       });
 
-      cleanedChunks.push(cleanedChunk.trim());
+      cleaned.push(result.trim());
     } catch {
-      cleanedChunks.push(chunks[index]);
+      cleaned.push(chunks[i]);
     }
   }
 
-  return cleanedChunks.join("\n").trim();
+  return cleaned.join("\n").trim();
 }
 
 async function generateDetailedNotes(input: {
@@ -169,48 +154,37 @@ async function generateDetailedNotes(input: {
   onProgress?: (detail: string, progress: number) => void;
 }) {
   const chunks = chunkTranscript(input.cleanedTranscript, 2600);
-  const chunkNotes: string[] = [];
+  const notes: string[] = [];
 
-  for (let index = 0; index < chunks.length; index += 1) {
+  for (let i = 0; i < chunks.length; i++) {
     input.onProgress?.(
-      `Generating detailed notes (${index + 1}/${chunks.length})`,
-      38 + Math.round((index / Math.max(chunks.length, 1)) * 18)
+      `Generating notes (${i + 1}/${chunks.length})`,
+      38 + Math.round((i / chunks.length) * 18)
     );
 
-    const sectionNotes = await generateChatCompletion({
+    const res = await generateChatCompletion({
       endpoint: input.endpoint,
       model: input.model,
       accessToken: input.accessToken,
       temperature: 0.15,
       maxTokens: 1000,
-      timeoutMs: 120000,
       messages: [
         {
           role: "system",
           content:
-            "You are an expert GCSE study-note writer. Turn the supplied lesson transcript into rich, accurate GCSE revision notes. Stay grounded in the source, cover all meaningful teaching points, and do not drift into unrelated, advanced, or non-GCSE material."
+            "Turn transcript into GCSE revision notes. Stay accurate and structured."
         },
         {
           role: "user",
-          content:
-            `Create detailed revision notes from this lesson section.\n\n` +
-            `Requirements:\n` +
-            `- Keep the explanation level matched to GCSE.\n` +
-            `- Cover all meaningful educational content from this section.\n` +
-            `- Remove filler, intros, and repeated phrasing.\n` +
-            `- Use headings and bullet points.\n` +
-            `- Keep explanations clear for a student revising from the video.\n` +
-            `- Do not add outside-topic material or anything beyond GCSE level.\n` +
-            `- Do not use markdown tables.\n\n` +
-            `Lesson section:\n${chunks[index]}`
+          content: chunks[i]
         }
       ]
     });
 
-    chunkNotes.push(sectionNotes);
+    notes.push(res);
   }
 
-  input.onProgress?.("Combining the lesson notes", 58);
+  input.onProgress?.("Combining notes", 58);
 
   return generateChatCompletion({
     endpoint: input.endpoint,
@@ -218,28 +192,15 @@ async function generateDetailedNotes(input: {
     accessToken: input.accessToken,
     temperature: 0.1,
     maxTokens: 2400,
-    timeoutMs: 120000,
     messages: [
       {
         role: "system",
         content:
-          "You are an expert GCSE study-note editor. Merge the supplied grounded section notes into one detailed revision sheet. Keep all important teaching points, avoid repetition, stay close to the source material, and keep the level strictly GCSE."
+          "Merge notes into a final GCSE revision sheet with headings and bullet points."
       },
       {
         role: "user",
-        content:
-          `Turn these section notes into one final detailed revision sheet.\n\n` +
-          `Requirements:\n` +
-          `- Begin with a concise title.\n` +
-          `- Include a short "Brief Overview" section.\n` +
-          `- Include a "Key Points" section.\n` +
-          `- Use clear headings and bullet points.\n` +
-          `- Keep as much meaningful detail as possible from the lesson.\n` +
-          `- Do not add unrelated knowledge that was not taught in the video.\n` +
-          `- Keep all explanations strictly at GCSE level.\n` +
-          `- End with a short section called "GCSE Exam Tips" containing topic-relevant GCSE revision or exam tips.\n` +
-          `- Do not use markdown tables or code fences.\n\n` +
-          `Section notes:\n${chunkNotes.join("\n\n---\n\n")}`
+        content: notes.join("\n\n---\n\n")
       }
     ]
   });
@@ -249,45 +210,22 @@ async function runProcessing(
   videoUrl: string,
   userId: string,
   transcriptOverride?: TranscriptData,
-  onProgress?: (state: Omit<ProcessTaskState, "status" | "video" | "error">) => void
+  onProgress?: (state: any) => void
 ) {
   const settings = await getUserSettings(userId);
 
-  onProgress?.({
-    stage: "transcript",
-    detail: transcriptOverride ? "Using the browser transcript" : "No transcript provided",
-    progress: 8
-  });
-
   if (!transcriptOverride) {
-    throw new Error("No transcript provided. Please fetch the transcript in the browser first.");
+    throw new Error("No transcript provided.");
   }
 
   const transcriptData = transcriptOverride;
-
-  onProgress?.({
-    stage: "cleaning",
-    detail: "Preparing transcript for cloud study mode",
-    progress: 22
-  });
 
   const cleanedTranscript = await refineTranscriptForStudy({
     endpoint: env.aiApiUrl,
     model: settings.model,
     accessToken: env.aiToken,
     rawTranscript: transcriptData.rawTranscript,
-    onProgress: (detail, progress) =>
-      onProgress?.({
-        stage: "cleaning",
-        detail,
-        progress
-      })
-  });
-
-  onProgress?.({
-    stage: "notes",
-    detail: "Generating revision notes",
-    progress: 45
+    onProgress
   });
 
   const notes = await generateDetailedNotes({
@@ -295,68 +233,16 @@ async function runProcessing(
     model: settings.model,
     accessToken: env.aiToken,
     cleanedTranscript,
-    onProgress: (detail, progress) =>
-      onProgress?.({
-        stage: "notes",
-        detail,
-        progress
-      })
+    onProgress
   });
-
-  onProgress?.({
-    stage: "notes",
-    detail: "Verifying note accuracy",
-    progress: 66
-  });
-
-  let verifiedNotes = notes;
-
-  try {
-    const verificationQueries = await extractVerificationQueries({
-      endpoint: env.aiApiUrl,
-      model: settings.model,
-      accessToken: env.aiToken,
-      cleanedTranscript
-    });
-    const references = await collectVerificationReferences(verificationQueries);
-
-    verifiedNotes = await verifyAndRefineNotes({
-      endpoint: env.aiApiUrl,
-      model: settings.model,
-      accessToken: env.aiToken,
-      cleanedTranscript,
-      draftNotes: notes,
-      references
-    });
-  } catch {
-    verifiedNotes = notes;
-  }
 
   const quizSource = prepareTranscriptForModel(cleanedTranscript, 5200);
-
-  onProgress?.({
-    stage: "mcq",
-    detail: "Generating quiz questions",
-    progress: 72
-  });
 
   const quiz = await generateLessonQuiz({
     endpoint: env.aiApiUrl,
     model: settings.model,
     accessToken: env.aiToken,
-    quizSource,
-    onProgress: (detail, progress) =>
-      onProgress?.({
-        stage: progress < 70 ? "mcq" : "written",
-        detail,
-        progress: 70 + Math.round((progress / 100) * 18)
-      })
-  });
-
-  onProgress?.({
-    stage: "saving",
-    detail: "Saving the study pack",
-    progress: 94
+    quizSource
   });
 
   return saveProcessedVideo({
@@ -365,7 +251,7 @@ async function runProcessing(
     title: buildVideoTitle(transcriptData.videoId),
     rawTranscript: transcriptData.rawTranscript,
     cleanedTranscript,
-    notes: verifiedNotes,
+    notes,
     quiz,
     flashcards: [],
     processingVersion: CURRENT_PROCESSING_VERSION,
@@ -381,71 +267,53 @@ function setTaskState(taskId: string, state: ProcessTaskState) {
   processTasks.set(taskId, state);
 }
 
-function updateTaskProgress(taskId: string, state: Omit<ProcessTaskState, "status" | "video" | "error">) {
+function updateTaskProgress(taskId: string, state: any) {
   processTasks.set(taskId, {
     status: "running",
-    stage: state.stage,
-    detail: state.detail,
-    progress: state.progress
+    ...state
   });
-}
-
-function shouldProcessInline() {
-  return process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production";
 }
 
 export async function GET(request: NextRequest) {
   const { user, response } = await requireApiUser();
-  if (!user) {
-    return response;
-  }
+  if (!user) return response;
 
   const taskId = request.nextUrl.searchParams.get("taskId");
-  if (!taskId) {
-    return apiError("A taskId is required.", 400);
-  }
+  if (!taskId) return apiError("Missing taskId", 400);
 
   const task = processTasks.get(taskId);
-  if (!task) {
-    return apiError("That processing task could not be found.", 404);
-  }
+  if (!task) return apiError("Task not found", 404);
 
   return NextResponse.json(task);
 }
 
 export async function POST(request: NextRequest) {
   const { user, response } = await requireApiUser();
-  if (!user) {
-    return response;
-  }
+  if (!user) return response;
 
-  let body: unknown;
+  let body: any;
 
   try {
     body = await parseJsonBody(request);
-  } catch (error) {
-    return apiError(
-      error instanceof Error ? error.message : "The request payload was invalid.",
-      400
-    );
+  } catch (e) {
+    return apiError("Invalid request body", 400);
   }
 
   const parsed = processSchema.safeParse(body);
   if (!parsed.success) {
-    return apiError("Enter a valid YouTube URL.");
+    return apiError("Invalid YouTube URL", 400);
   }
 
   try {
     const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
 
-    // 🛠️ SAFE PARSING CONTEXT: Accept the raw transcript payload reliably if provided
-    let transcriptOverride: TranscriptData | undefined = undefined;
+    let transcriptOverride: TranscriptData | undefined;
 
-    if (parsed.data.transcript && parsed.data.transcript.rawTranscript) {
+    if (parsed.data.transcript?.rawTranscript) {
       transcriptOverride = {
-        videoId: videoId, // Force use of clean server-validated key layout
+        videoId,
         rawTranscript: parsed.data.transcript.rawTranscript,
-        transcriptLanguage: parsed.data.transcript.transcriptLanguage || "en"
+        transcriptLanguage: parsed.data.transcript.transcriptLanguage
       };
     } else if (parsed.data.manualTranscript) {
       transcriptOverride = {
@@ -455,99 +323,36 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    if (shouldProcessInline()) {
-      const video = await runProcessing(parsed.data.videoUrl, user.id, transcriptOverride);
-      return NextResponse.json({ video, cached: false, done: true });
-    }
-
-    const inFlight = processingCache.get(videoId);
-    if (inFlight) {
-      const taskId = createTaskId();
-      setTaskState(taskId, {
-        status: "running",
-        stage: "waiting",
-        detail: "Waiting for the current processing task to finish",
-        progress: 5
-      });
-
-      inFlight
-        .then((video) => {
-          setTaskState(taskId, {
-            status: "completed",
-            stage: "completed",
-            detail: "Study pack ready",
-            progress: 100,
-            video
-          });
-        })
-        .catch((error) => {
-          setTaskState(taskId, {
-            status: "failed",
-            stage: "failed",
-            detail: "Processing failed",
-            progress: 100,
-            error: error instanceof Error ? error.message : "Unable to process this video."
-          });
-        });
-
-      return NextResponse.json({ taskId, done: false, cached: false });
-    }
-
     const taskId = createTaskId();
+
     setTaskState(taskId, {
       status: "running",
       stage: "queued",
-      detail: "Preparing the cloud AI pipeline",
-      progress: 2
+      detail: "Starting",
+      progress: 5
     });
 
-    const nextPromise = runProcessing(
+    const promise = runProcessing(
       parsed.data.videoUrl,
       user.id,
       transcriptOverride,
       (state) => updateTaskProgress(taskId, state)
     );
-    processingCache.set(videoId, nextPromise);
 
-    nextPromise
-      .then((video) => {
-        processingCache.delete(videoId);
-        setTaskState(taskId, {
-          status: "completed",
-          stage: "completed",
-          detail: "Study pack ready",
-          progress: 100,
-          video
-        });
-      })
-      .catch((error) => {
-        processingCache.delete(videoId);
-        setTaskState(taskId, {
-          status: "failed",
-          stage: "failed",
-          detail: "Processing failed",
-          progress: 100,
-          error: error instanceof Error ? error.message : "Unable to process this video."
-        });
+    promise.then(() => {
+      setTaskState(taskId, {
+        status: "completed",
+        stage: "done",
+        detail: "Complete",
+        progress: 100
       });
+    });
 
-    return NextResponse.json({ taskId, done: false, cached: false });
+    return NextResponse.json({ taskId, done: false });
   } catch (error) {
-    try {
-      const videoId = extractYouTubeVideoId(parsed.data.videoUrl);
-      processingCache.delete(videoId);
-    } catch {
-      return apiError(
-        error instanceof Error ? error.message : "Unable to process this video.",
-        500
-      );
-    }
-
     const message =
-      error instanceof Error ? error.message : "Unable to process this video.";
-    const statusCode = message.includes("System busy, please try again in 15 minutes")
-      ? 503
-      : 500;
-    return apiError(message, statusCode);
+      error instanceof Error ? error.message : "Processing failed";
+
+    return apiError(message, 500);
   }
 }
