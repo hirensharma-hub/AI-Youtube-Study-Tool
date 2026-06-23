@@ -30,7 +30,83 @@ export interface ChatCompletionInput {
 
 /**
  * ----------------------------
- * AI CORE UTILITIES
+ * TEXT UTILITIES
+ * ----------------------------
+ */
+
+export function chunkTranscript(text: string, maxChars = 2800): string[] {
+  if (!text) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const line of text.split("\n")) {
+    if ((current + "\n" + line).length > maxChars) {
+      chunks.push(current.trim());
+      current = line;
+    } else {
+      current += "\n" + line;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks;
+}
+
+export function prepareTranscriptForModel(
+  text: string,
+  maxChars = 5200
+): string {
+  if (!text) return "";
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
+}
+
+/**
+ * ----------------------------
+ * JSON HELPERS
+ * ----------------------------
+ */
+
+export function extractJsonBlock(value: string): string | null {
+  if (!value) return null;
+
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  return value.slice(start, end + 1);
+}
+
+export function parseJsonObjectResponse<T = any>(
+  value: string
+): T | null {
+  try {
+    const json = extractJsonBlock(value);
+    if (!json) return null;
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+export function parseJsonArrayResponse<T = any>(
+  value: string
+): T[] {
+  try {
+    const json = extractJsonBlock(value);
+    if (!json) return [];
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ----------------------------
+ * AI CORE
  * ----------------------------
  */
 
@@ -73,12 +149,10 @@ function extractTextFromContentParts(content: unknown): string {
     return content
       .map((part) => {
         if (typeof part === "string") return part;
-
         if (part && typeof part === "object") {
           const record = part as Record<string, unknown>;
           if (typeof record.text === "string") return record.text;
         }
-
         return "";
       })
       .join("")
@@ -119,9 +193,16 @@ function getErrorMessage(payload: any) {
  * ----------------------------
  */
 
-export async function generateChatCompletion(input: ChatCompletionInput) {
-  if (input.endpoint.includes("ollama.com") && !input.accessToken) {
-    throw new Error("Set OLLAMA_API_KEY in .env.local to use Ollama Cloud.");
+export async function generateChatCompletion(
+  input: ChatCompletionInput
+) {
+  if (
+    input.endpoint.includes("ollama.com") &&
+    !input.accessToken
+  ) {
+    throw new Error(
+      "Set OLLAMA_API_KEY in .env.local to use Ollama Cloud."
+    );
   }
 
   const headers: Record<string, string> = {
@@ -132,7 +213,10 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
     headers.Authorization = `Bearer ${input.accessToken}`;
   }
 
-  const modelAttempts = getModelAttemptOrder(input.endpoint, input.model);
+  const modelAttempts = getModelAttemptOrder(
+    input.endpoint,
+    input.model
+  );
 
   let lastError: Error | null = null;
 
@@ -161,7 +245,10 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
                   max_tokens: input.maxTokens,
                   messages: input.messages,
                   ...(input.responseFormat
-                    ? { response_format: input.responseFormat }
+                    ? {
+                        response_format:
+                          input.responseFormat
+                      }
                     : {})
                 }
               : {
@@ -181,7 +268,9 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
 
         clearTimeout(timeout);
 
-        const payload = await response.json().catch(() => null);
+        const payload = await response
+          .json()
+          .catch(() => null);
 
         if (!response.ok) {
           const errMsg = getErrorMessage(payload);
@@ -205,59 +294,10 @@ export async function generateChatCompletion(input: ChatCompletionInput) {
 }
 
 /**
- * -------------------------------------------------
- * COMPATIBILITY LAYER (ONLY EXPORTS USED BY ROUTES)
- * -------------------------------------------------
+ * ----------------------------
+ * COMPATIBILITY LAYER
+ * ----------------------------
  */
 
-// transcript helpers
-export const chunkTranscript = (text: string, size = 2800) => {
-  if (!text) return [];
-
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const line of text.split("\n")) {
-    if ((current + "\n" + line).length > size) {
-      chunks.push(current.trim());
-      current = line;
-    } else {
-      current += "\n" + line;
-    }
-  }
-
-  if (current.trim()) chunks.push(current.trim());
-
-  return chunks;
-};
-
-export const prepareTranscriptForModel = (text: string, max = 5200) => {
-  if (!text) return "";
-  return text.length > max ? text.slice(0, max) : text;
-};
-
-export const buildRelevantTranscriptContext = prepareTranscriptForModel;
-
-// JSON helpers
-export const parseJsonObjectResponse = (value: string) => {
-  try {
-    const start = value.indexOf("{");
-    const end = value.lastIndexOf("}");
-    if (start === -1 || end === -1) return null;
-    return JSON.parse(value.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-};
-
-export const parseJsonArrayResponse = (value: string) => {
-  try {
-    const start = value.indexOf("[");
-    const end = value.lastIndexOf("]");
-    if (start === -1 || end === -1) return [];
-    const parsed = JSON.parse(value.slice(start, end + 1));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
+export const buildRelevantTranscriptContext =
+  prepareTranscriptForModel;
